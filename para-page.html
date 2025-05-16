@@ -1,0 +1,1126 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Impact-Ed Dashboard</title>
+        <!-- Favicon -->
+        <link rel="icon" type="image/x-icon" href="favicon.png"> 
+    <link rel="stylesheet" href="para-style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
+        integrity="sha512-9usAa10IRO0HhonpyAIVpjrylPvoDwiPUiKdWk5t3PyolY1cOd4DSE0Ga+ri4AuTroPR5aQvXU9xC6qOPnzFeg=="
+        crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <!-- Mediapipe Imports -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.6.8/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.6.8/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.6.8/firebase-firestore.js"></script>
+    <style>
+        video {
+            display: none;
+        }
+
+        .log {
+            position: absolute;
+            top: 1%;
+            left: 1%;
+            background: rgba(0, 0, 0, 0.5);
+            color: white;
+            padding: 0.8%;
+            font-size: 1vw;
+            z-index: 10;
+            border-radius: 0.4%;
+        }
+
+        .cursor {
+            position: fixed;
+            width: 3vh;
+            height: 3vh;
+            background-color: red;
+            border-radius: 3vh;
+            pointer-events: none;
+            transition: left 0.01s ease-out, top 0.01s ease-out;
+            z-index: 100002;
+        }
+
+        #overlay {
+            display: none;
+        }
+
+        #loading-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(184, 139, 255, 0.9);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 3.1vh;
+            z-index: 1000000;
+            /* Ensure it's on top */
+        }
+
+        #loading-screen.hidden {
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="loading-screen">
+        <span data-i18n="loading">Loading...</span>
+    </div>
+    <div class="container" style="display:none;">
+        <div class="logo-container">
+            <div class="logo">
+                <span data-i18n="logoTitle">Impact Ed</span>
+            </div>
+          
+        </div>
+        <div class="toolbar-container">
+          <nav class="toolbar">
+          
+           <div class="menu-items-container">
+             <ul class="menu">
+               <li class="menu-item active" data-target="home">
+               <i class="icon fas fa-home"></i><span data-i18n="home">Home</span>
+               </li>
+               <li class="menu-item" data-target="study">
+               <i class="icon fas fa-book"></i><span data-i18n="study">Study</span>
+               </li>
+               <li class="menu-item" data-target="help">
+                <i class="icon fas fa-life-ring"></i><span data-i18n="help">SOS</span>
+               </li>
+               <li class="menu-item" data-target="profile">
+               <i class="icon fas fa-user"></i><span data-i18n="profile">Profile</span>
+               </li>
+              
+             </ul>
+           </div>
+        </nav>
+        <div style="height: 40.5vh;"></div>
+     </div>
+     <main class="content">
+        <section id="home">
+           <div id="user-level-container">
+            <span id="user-level-text" data-i18n="level" >Level: Beginner</span>
+           </div>
+            <div class="toggle-container">
+                <input type="checkbox" id="dark-mode-toggle">
+                <label for="dark-mode-toggle" class="toggle-switch"></label>
+                <span data-i18n="darkMode">Dark Mode</span>
+            </div>
+                    
+                <div class="welcome-banner">
+                    <h1 id="welcome-message"></h1>
+                    <p data-i18n="readyToContinue">Ready to continue your learning journey?</p>
+                </div>
+                 <div class="card-container">
+                   <div class="card last-chapter-card" style="display: none;">
+                        <h2 data-i18n="lastChapter">Last Chapter</h2>
+                        <p>Chapter Name</p>
+                    </div>
+
+                   <div class="card" id="total-time-card">
+                        <h2 data-i18n="totalTimeSpent">Total Time Spent</h2>
+                        <div class="pace-display">
+                            <span class="percentage">0 hours</span>
+                        </div>
+                         <div class="progress-bar">
+                            <div class="progress-bar-inner" style="width: 0%;"></div>
+                        </div>
+                         <p data-i18n="keepUpTheGreatWork">Keep up the great work!</p>
+                    </div>
+                      <div class="card" id="subject-time-card">
+                        <h2 data-i18n="subjectTimeSpent">Time Per Subject</h2>
+                     </div>
+                    <div class="card course-progress-card">
+                        <h2 data-i18n="courseProgress">Course Progress</h2>
+                    </div>
+                </div>
+            </section>
+            <section id="study" style="display:none;">
+                <div class="study-page">
+                    <div class="back-button-container" style="display:none;">
+                        <button class="back-button"><i class="icon fas fa-arrow-left"></i> <span data-i18n="back">Back</span></button>
+                        <button id="convert-to-audio" onclick="convertToAudio()" style="margin-left: 10px;">Convert To Audio</button>
+                        <button id="play-audio" onclick="playAudio()" style="margin-left: 10px; display:none;">Play</button>
+                    </div>
+                    <div class="study-content">
+                        <ul class="study-menu" style="display:block;">
+                        </ul>
+                        <div class="chapters-container" style="display: none;">
+                           <div class="chapters-container-inner">
+                           </div>
+                        </div>
+                        <div class="chapter-content-container" style="display: none;">
+                            <div class="content-area">
+                                <h3 class="chapter-title"></h3>
+                                <div class="content-text"></div>
+                            </div>
+                             <div class="loading-indicator" style="display: none;">
+                                <p data-i18n="loading">Loading...</p>
+                            </div>
+                            <div class="error-message" style="display: none;">
+                                <p class="error-text" data-i18n="errorLoading">Error loading content. Please try again.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            <section id="help" style="display:none;">
+                 <button id="sosButton" class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">SOS</button>
+                </section>
+                <section id="profile" style="display:none;">
+                    <h2>Profile Section</h2>
+                  <div id="profile-details">
+                  </div>
+                  <button id="logout-button" data-i18n="logout">Logout</button>
+              </section>
+                <div id="sosOverlay" style="display:none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.7); z-index: 1001;">
+                    <button id="cancelSosButton" style="
+                        position: absolute;
+                        top: 50%;
+                        left: 50%;
+                        transform: translate(-50%, -50%);
+                        padding: 2.6vh 5.2vh;
+                        font-size: 3.1vh;
+                        background: white;
+                        color: black;
+                        border: 0.26vh solid red;
+                        border-radius: 1.3vh;
+                        cursor: pointer;
+                        z-index: 1001;
+                         outline: none;
+                    ">Turn Off SOS</button>
+                </div>
+        </main>
+        <video id="video" autoplay></video>
+        <canvas id="overlay"></canvas>
+        <div class="log" id="log">Logs will appear here...</div>
+         <button id="enableActions" data-i18n="enableActions">Enable Actions</button>
+        <div class="cursor" id="cursor"></div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="i18n.js"></script>
+    <script src="para-script.js"></script>
+    <script>
+        // Your web app's Firebase configuration
+        var firebaseConfig = {
+            apiKey: "AIzaSyCbGgulYzSiHnlfF0GpMAYc_hF960KXpRE",
+            authDomain: "inspireed-b0ab2.firebaseapp.com",
+            projectId: "inspireed-b0ab2",
+            storageBucket: "inspireed-b0ab2.firebasestorage.app",
+            messagingSenderId: "906121434476",
+            appId: "1:906121434476:web:018e638708ef0affec4f49",
+            measurementId: "G-L02KPH3LPC"
+        };
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+
+        const loadingScreen = document.getElementById('loading-screen');
+        const container = document.querySelector('.container');
+        const welcomeMessage = document.getElementById('welcome-message');
+        const profileDetails = document.getElementById('profile-details');
+        const db = firebase.firestore();
+           function waitForFirebase() {
+             return new Promise((resolve) => {
+                firebase.auth().onAuthStateChanged((user) => {
+                     resolve(user)
+                });
+            });
+         }
+
+        //Check authentication on page load
+        (async function() {
+            const user = await waitForFirebase();
+            if (!user) {
+                // Redirect to login page if user is not logged in
+                window.location.href = 'index.html';
+            } else {
+               // Fetch user details from Firestore and show the dashboard
+                 try{
+                    const doc = await db.collection('users').doc(user.email).get();
+                    if(doc.exists){
+                          const userData = doc.data();
+                           welcomeMessage.innerHTML = `<span data-i18n="welcomeBack">Welcome back,</span> ${userData.name}!`;
+                            profileDetails.innerHTML = `
+                               <p><strong data-i18n="name">Name:</strong> ${userData.name}</p>
+                                <p><strong data-i18n="email">Email:</strong> ${userData.email}</p>
+                                <p><strong data-i18n="language">Language:</strong> ${userData.language}</p>
+                         `;
+                             localStorage.setItem('completedChapters', JSON.stringify(userData.progress || {}));
+                               // Fetch total time spent from Firestore
+                                 let totalTime = 0;
+                                 if (userData.totaltimespent) {
+                                        totalTime = userData.totaltimespent;
+                                        localStorage.setItem('totalTimeSpent', totalTime.toString());
+                                    }
+                                     updateProgressDisplay();
+                                      loadingScreen.classList.add('hidden');
+                                     container.style.display = "flex";
+                                      updateTotalTimeDisplay();
+
+                    } else{
+                        welcomeMessage.innerHTML = `<span data-i18n="welcomeBack">Welcome back,</span>`;
+                        loadingScreen.classList.add('hidden');
+                        container.style.display = "flex";
+                       }
+
+
+                } catch(e) {
+                   console.log(e);
+                     welcomeMessage.innerHTML = `<span data-i18n="welcomeBack">Welcome back,</span>`;
+                     loadingScreen.classList.add('hidden');
+                    container.style.display = "flex";
+                 }
+            }
+        })();
+
+        function updateProgress(chapterName, subjectName) {
+            //Get the users email
+            const userEmail = firebase.auth().currentUser.email;
+             // Get current progress data from local storage and from firestore
+            let completedChapters = JSON.parse(localStorage.getItem('completedChapters') || '{}');
+
+            // Update completed chapters
+              completedChapters[chapterName] = subjectName;
+               localStorage.setItem('completedChapters', JSON.stringify(completedChapters));
+              localStorage.setItem('lastCompletedChapter', chapterName)
+
+             // Upload the progress to firebase
+              db.collection('users').doc(userEmail).update({
+                progress: completedChapters
+            })
+            .then(() => {
+              console.log('Progress updated')
+              updateProgressDisplay()
+            })
+             .catch((error) => {
+                console.error('Error updating progress', error);
+            });
+          }
+
+          
+
+
+        // Mediapipe Iris Tracking Logic (Moved Here)
+        const LEFT_EYE_LANDMARKS = [33, 133, 159, 145, 160];
+        const RIGHT_EYE_LANDMARKS = [362, 263, 386, 374, 387];
+        const IRIS_LEFT_LANDMARKS = [469, 470, 471, 472];
+        const IRIS_RIGHT_LANDMARKS = [474, 475, 476, 477];
+        const BLINK_THRESHOLD = 0.15;
+        const BLINK_FRAMES = 2;
+        const DEBOUNCE_TIME = 100;
+        const MAX_LOST_TRACKING_TIME = 3000;
+
+        let actionsEnabled = false;
+        let lastAction = null;
+        let lastBlinkTime = 0;
+        let leftEyeEARHistory = [];
+        let rightEyeEARHistory = [];
+        let consecutiveLeftBlinkFrames = 0;
+        let consecutiveRightBlinkFrames = 0;
+        let trackingLostTime = null;
+        let isBlinking = false; // Flag to indicate if the user is blinking
+        let isScrolling = false; // Flag to indicate if the user is Scrolling
+        let scrollDirection = null;
+
+        let calibratedCenter = 0.5; // Default vertical ratio for "center"
+        let lastVerticalRatio = 0;
+
+        let lookingUpStartTime = null; // Track when the user starts looking up
+
+
+        const videoElement = document.getElementById('video');
+        const canvasElement = document.getElementById('overlay');
+        const logElement = document.getElementById('log');
+        const cursorElement = document.getElementById('cursor');
+        const canvasCtx = canvasElement.getContext('2d');
+
+
+
+        document.getElementById('enableActions').addEventListener('click', (event) => {
+            actionsEnabled = true;
+            log("Actions enabled. Start tracking!");
+
+            const button = event.target;
+            button.disabled = true;
+            button.innerText = i18n[localStorage.getItem('lang') || 'en']['actionsEnabled'];
+        });
+
+        // Virtual cursor follows the real mouse
+        document.addEventListener('mousemove', (event) => {
+            const { clientX, clientY } = event;
+
+            cursorElement.style.left = `${clientX}px`;
+            cursorElement.style.top = `${clientY}px`;
+        });
+
+
+
+        function log(message) {
+            logElement.innerText = message;
+        }
+
+        function calculateEyeAspectRatio(eye) {
+            const [left, right, top, bottom] = [eye[0], eye[1], eye[2], eye[3]];
+            const verticalDistance = Math.hypot(top.x - bottom.x, top.y - bottom.y);
+            const horizontalDistance = Math.hypot(left.x - right.x, left.y - right.y);
+
+            return verticalDistance / horizontalDistance;
+        }
+
+        function calculatePositionRatio(iris, eye) {
+            const [left, right, top, bottom] = [eye[0], eye[1], eye[2], eye[3]];
+            const irisCenter = iris.reduce((sum, point) => {
+                sum.x += point.x;
+                sum.y += point.y;
+                return sum;
+            }, {
+                x: 0,
+                y: 0
+            });
+            irisCenter.x /= iris.length;
+            irisCenter.y /= iris.length;
+
+            const horizontalRatio = (irisCenter.x - left.x) / (right.x - left.x);
+            const verticalRatio = (irisCenter.y - top.y) / (bottom.y - top.y);
+
+            return {
+                horizontalRatio,
+                verticalRatio
+            };
+        }
+
+        function smoothEAR(earHistory) {
+            const sum = earHistory.reduce((acc, value) => acc + value, 0);
+            return sum / earHistory.length;
+        }
+
+        function detectBlink(leftEAR, rightEAR) {
+            const now = Date.now();
+            let blinkDetected = false;
+
+            // Update EAR histories
+            leftEyeEARHistory.push(leftEAR);
+            rightEyeEARHistory.push(rightEAR);
+            if (leftEyeEARHistory.length > BLINK_FRAMES) leftEyeEARHistory.shift();
+            if (rightEyeEARHistory.length > BLINK_FRAMES) rightEyeEARHistory.shift();
+
+            // Smooth EAR values
+            const smoothedLeftEAR = smoothEAR(leftEyeEARHistory);
+            const smoothedRightEAR = smoothEAR(rightEyeEARHistory);
+
+            // Check left eye blink
+            if (smoothedLeftEAR < BLINK_THRESHOLD) {
+                consecutiveLeftBlinkFrames++;
+                if (consecutiveLeftBlinkFrames >= BLINK_FRAMES && now - lastBlinkTime > DEBOUNCE_TIME) {
+                    const vh = window.innerHeight / 100;
+                    const moveX = 4 * vh;
+                    log('Moving cursor right');
+                    moveCursor(moveX, 0);
+                    lastBlinkTime = now;
+                    consecutiveLeftBlinkFrames = 0;
+                    blinkDetected = true;
+                }
+            } else {
+                consecutiveLeftBlinkFrames = 0;
+            }
+
+            // Check right eye blink
+            if (smoothedRightEAR < BLINK_THRESHOLD) {
+                consecutiveRightBlinkFrames++;
+                if (consecutiveRightBlinkFrames >= BLINK_FRAMES && now - lastBlinkTime > DEBOUNCE_TIME) {
+                const vh = window.innerHeight / 100;
+                const moveX = 4 * vh;
+                log('Moving cursor right');
+                moveCursor(-moveX, 0);
+
+                    lastBlinkTime = now;
+                    consecutiveRightBlinkFrames = 0;
+                    blinkDetected = true;
+                }
+            } else {
+                consecutiveRightBlinkFrames = 0;
+            }
+
+            if (blinkDetected) {
+                isBlinking = true; // Set isBlinking flag when a blink is detected
+            } else {
+                isBlinking = false; // Set false if no blink is detected
+            }
+        }
+
+
+        function detectMovement(horizontalRatio, verticalRatio) {
+            if (isBlinking) return 'center'; // If blinking, don't perform eye-based movements
+
+            const adjustedVerticalRatio = verticalRatio - (calibratedCenter - 0.5); // Adjust with calibration
+
+            if (adjustedVerticalRatio < 0.4) return 'up'; // Gaze upwards
+            if (adjustedVerticalRatio > 0.6) return 'down'; // Gaze downwards
+            if (horizontalRatio > 0.65) return 'right'; // Gaze to the right
+            if (horizontalRatio < 0.37) return 'left'; // Gaze to the left
+            return 'center'; // Centered gaze
+        }
+
+        function moveCursor(dx, dy) {
+            const currentLeft = parseInt(cursorElement.style.left || 0, 10);
+            const currentTop = parseInt(cursorElement.style.top || 0, 10);
+
+            const newLeft = currentLeft + dx;
+            const newTop = currentTop + dy;
+
+            // Get the viewport dimensions
+            const viewportWidth = window.innerWidth;
+            const viewportHeight = window.innerHeight;
+
+            // Calculate the boundaries that the cursor must not go over
+            const cursorWidth = 20;
+            const cursorHeight = 20;
+
+            const minLeft = 0;
+            const minTop = 0;
+            const maxLeft = viewportWidth - cursorWidth;
+            const maxTop = viewportHeight - cursorHeight;
+
+
+            cursorElement.style.left = `${Math.max(minLeft, Math.min(maxLeft, newLeft))}px`;
+            cursorElement.style.top = `${Math.max(minTop, Math.min(maxTop, newTop))}px`;
+        }
+
+        let toolbarActionTimeout = null; // Store the timeout ID
+        const toolbarActionInterval = 1000; // 1 second interval
+
+        function performAction(action) {
+    if (!actionsEnabled) return;
+    if (isBlinking && (action === 'up' || action === 'down' || action === 'left' || action === 'right')) return;
+
+    if (action !== lastAction) {
+        lastAction = action;
+        log(`Action triggered: ${action}`);
+
+        const cursorX = parseInt(cursorElement.style.left, 10);
+        const cursorY = parseInt(cursorElement.style.top, 10);
+        const element = document.elementFromPoint(cursorX + 10, cursorY + 10);
+
+        let isToolbarElement = false;
+        let parent = element;
+        while (parent) {
+            if (parent.classList && parent.classList.contains('toolbar')) {
+                isToolbarElement = true;
+                break;
+            }
+            parent = parent.parentNode;
+        }
+
+        let isInStudySection = false;
+        parent = element;
+        while (parent) {
+            if (parent.id === 'study') {
+                isInStudySection = true;
+                break;
+            }
+            parent = parent.parentNode;
+        }
+
+        const contentContainer = document.querySelector('.content'); // Get .content once here
+        const placementTestModal = document.getElementById('placementTestModal'); // Get the placement test modal
+        let modalContent = null; // Initialize modalContent
+
+        if (placementTestModal) {
+            modalContent = placementTestModal.querySelector('.modal-content'); // Get the modal content
+        }
+
+
+        switch (action) {
+            case 'up':
+                log("Looking up");
+                if (!lookingUpStartTime) {
+                    lookingUpStartTime = Date.now();
+                }
+                if (lookingUpStartTime && Date.now() - lookingUpStartTime >= 2000) {
+                    if (isToolbarElement) {
+                        log("Click action blocked because it's within the toolbar.");
+                        lookingUpStartTime = null;
+                        break;
+                    }
+                    log("Looking up for 2 seconds: Triggering click");
+                    const clickEvent = new MouseEvent('click', {
+                        bubbles: true,
+                        cancelable: true,
+                        view: window,
+                    });
+                    if (element) {
+                        element.dispatchEvent(clickEvent);
+                    }
+                    lookingUpStartTime = null;
+                }
+                break;
+            case 'down':
+                log("Looking down");
+                lookingUpStartTime = null;
+                break;
+            case 'left':
+            case 'right':  // Combine left and right scrolling logic
+            const scrollAmount = action === 'left' ? window.innerHeight * 0.05 : -window.innerHeight * 0.05;
+            // Set scroll direction
+
+                if (element && element.closest('.toolbar')) {
+                    //Toolbar logic remains as before
+                    if (!toolbarActionTimeout) {
+                        navigateToolbar(action === 'left' ? 'down' : 'up'); // Reversed
+                        toolbarActionTimeout = setTimeout(() => {
+                            toolbarActionTimeout = null;
+                        }, toolbarActionInterval);
+                    }
+                } else {
+                    scrollDirection = scrollAmount;  //update here so the scrolling is smooth
+                    if (placementTestModal && placementTestModal.style.display === 'block' && modalContent) {
+                        startSmoothScroll(modalContent); // Scroll modalContent if it's open and found
+                    } else {
+                        startSmoothScroll(contentContainer);  // Use .content element from above
+                    }
+                }
+
+                break;
+            default:
+                if (placementTestModal && placementTestModal.style.display === 'block' && modalContent) {
+                    stopSmoothScroll(modalContent); // stop modalContent scrolling if it's open and found
+                } else {
+                    stopSmoothScroll(contentContainer);  // Use .content element from above
+                }
+                scrollDirection = null;
+                break;
+        }
+    }
+}
+let scrollIntervals = {}; // Store scroll intervals per element
+
+function startSmoothScroll(element) {
+    if (scrollIntervals[element]) return;  // Prevent multiple scrolls on same element
+    scrollIntervals[element] = setInterval(() => {
+        if(scrollDirection == null){ //Stop scrolling
+            stopSmoothScroll(element);
+            return;
+        }
+
+        element.scrollBy({ top: scrollDirection * 1, behavior: 'smooth' });
+    }, 16); // 16ms is roughly 60fps
+}
+
+function stopSmoothScroll(element) {
+    if (scrollIntervals[element]) {
+        clearInterval(scrollIntervals[element]);
+        delete scrollIntervals[element];  // Remove the interval reference
+    }
+}
+
+         function navigateToolbar(direction) {
+           const activeItem = document.querySelector('.menu-item.active');
+           if (!activeItem) return;
+
+           let nextItem;
+            if (direction === 'up') {
+               nextItem = activeItem.previousElementSibling; //Up
+            } else if (direction === 'down') {
+                nextItem = activeItem.nextElementSibling; //Down
+            }
+
+
+             if (nextItem && nextItem.classList.contains('menu-item')) {
+                //Remove the active class from current item
+                activeItem.classList.remove('active');
+
+                //Add active class to the new active item
+                 nextItem.classList.add('active');
+
+               // Simulate a click to trigger the section change
+               nextItem.click();
+
+// Scroll .content to top after simulated click
+const content = document.querySelector('.content');
+if (content) {
+    requestAnimationFrame(() => {
+        content.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+}
+}
+}
+
+        let faceMesh = null; // Store faceMesh instance
+        let camera = null; // Store camera instance
+
+        async function startIrisTracking() {
+
+            faceMesh = new FaceMesh({ //Initialize
+                locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`,
+            });
+
+            faceMesh.setOptions({
+                maxNumFaces: 1,
+                refineLandmarks: true,
+                minDetectionConfidence: 0.6,
+                minTrackingConfidence: 0.6,
+            });
+
+            // This callback will trigger even when face is lost.
+            faceMesh.onResults((results) => {
+                canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+                if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+                    const face = results.multiFaceLandmarks[0];
+                    const leftEye = LEFT_EYE_LANDMARKS.map((idx) => face[idx]);
+                    const rightEye = RIGHT_EYE_LANDMARKS.map((idx) => face[idx]);
+                    const leftIris = IRIS_LEFT_LANDMARKS.map((idx) => face[idx]);
+
+                    const leftEAR = calculateEyeAspectRatio(leftEye);
+                    const rightEAR = calculateEyeAspectRatio(rightEye);
+                    detectBlink(leftEAR, rightEAR);
+
+                    const {
+                        horizontalRatio,
+                        verticalRatio
+                    } = calculatePositionRatio(leftIris, leftEye);
+                    const movement = detectMovement(horizontalRatio, verticalRatio);
+                    performAction(movement);
+
+                    trackingLostTime = null; // Reset tracking lost time if tracking is successful
+                    lastVerticalRatio = verticalRatio;
+                    log(`Action: ${movement}`);
+                } else {
+                    if (!trackingLostTime) {
+                        trackingLostTime = Date.now();
+                    }
+                    if (Date.now() - trackingLostTime > MAX_LOST_TRACKING_TIME) {
+                        log("Tracking lost, trying again...");
+                    } else {
+                        log("Tracking lost, trying again...");
+                    }
+                }
+            });
+
+            camera = new Camera(videoElement, { // Initialize
+                onFrame: async () => {
+                    if (faceMesh) await faceMesh.send({
+                        image: videoElement
+                    }); //Send if faceMesh is instantiated
+                },
+                width: 1280,
+                height: 720,
+            });
+            camera.start();
+        }
+        (async function () {
+            await startIrisTracking();
+        })();
+
+        const sosButton = document.getElementById('sosButton');
+const sosOverlay = document.getElementById('sosOverlay');
+const cancelSosButton = document.getElementById('cancelSosButton');
+let audio;
+
+sosButton.addEventListener('click', async () => {
+
+    // Audio Playback
+    audio = new Audio('aud.mp3'); // Replace with your audio file path
+    audio.volume = 1;
+    audio.play();
+    audio.loop = true;
+
+    // Screen fade
+    sosOverlay.style.display = "block";
+    sosButton.disabled = true; // Disable SOS Button during SOS Mode
+
+    // Focus on cancel button
+    cancelSosButton.focus();
+});
+
+cancelSosButton.addEventListener('click', async () => {
+
+    // Stop audio
+    if (audio) {
+        audio.pause();
+        audio.currentTime = 0;
+    }
+
+    // Screen Fade
+    sosOverlay.style.display = "none";
+    sosButton.disabled = false;
+
+    audio = null;
+});
+
+    </script>
+
+<!-- Add before </body> -->
+<div id="placementTestModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000;">
+    <div class="modal-content">
+        <h2 data-i18n="placementTestTitle"></h2>
+        <p data-i18n="placementTestDescription"></p>
+        <form id="placementTestForm">
+            <div class="test-question">
+                <p data-i18n="testQuestion1"></p>
+                <label>
+                    <input type="radio" name="q1" value="a" required>
+                    <span data-i18n="testOption1a"></span>
+                </label>
+                <label>
+                    <input type="radio" name="q1" value="b">
+                    <span data-i18n="testOption1b"></span>
+                </label>
+                <label>
+                    <input type="radio" name="q1" value="c">
+                    <span data-i18n="testOption1c"></span>
+                </label>
+                <label>
+                    <input type="radio" name="q1" value="d">
+                    <span data-i18n="testOption1d"></span>
+                </label>
+            </div>
+            <div class="test-question">
+                <p data-i18n="testQuestion2"></p>
+                <label>
+                    <input type="radio" name="q2" value="a" required>
+                    <span data-i18n="testOption2a"></span>
+                </label>
+                <label>
+                    <input type="radio" name="q2" value="b">
+                    <span data-i18n="testOption2b"></span>
+                </label>
+                <label>
+                    <input type="radio" name="q2" value="c" required>
+                    <span data-i18n="testOption2c"></span>
+                </label>
+                <label>
+                    <input type="radio" name="q2" value="d" required>
+                    <span data-i18n="testOption2d"></span>
+                </label>
+            </div>
+            <div class="test-question">
+                <p data-i18n="testQuestion3"></p>
+                <label>
+                    <input type="radio" name="q3" value="a" required>
+                    <span data-i18n="testOption3a"></span>
+                </label>
+                <label>
+                    <input type="radio" name="q3" value="b">
+                    <span data-i18n="testOption3b"></span>
+                </label>
+                 <label>
+                    <input type="radio" name="q3" value="c" required>
+                    <span data-i18n="testOption3c"></span>
+                </label>
+                 <label>
+                    <input type="radio" name="q3" value="d" required>
+                    <span data-i18n="testOption3d"></span>
+                </label>
+            </div>
+            <div class="test-question">
+                <p data-i18n="testQuestion4"></p>
+                 <label>
+                    <input type="radio" name="q4" value="a" required>
+                    <span data-i18n="testOption4a"></span>
+                </label>
+                <label>
+                    <input type="radio" name="q4" value="b">
+                    <span data-i18n="testOption4b"></span>
+                </label>
+                 <label>
+                    <input type="radio" name="q4" value="c">
+                    <span data-i18n="testOption4c"></span>
+                </label>
+                 <label>
+                    <input type="radio" name="q4" value="d">
+                    <span data-i18n="testOption4d"></span>
+                </label>
+            </div>
+            <div class="test-question">
+                <p data-i18n="testQuestion5"></p>
+                <label>
+                    <input type="radio" name="q5" value="a" required>
+                    <span data-i18n="testOption5a"></span>
+                </label>
+                <label>
+                    <input type="radio" name="q5" value="b">
+                    <span data-i18n="testOption5b"></span>
+                </label>
+                 <label>
+                    <input type="radio" name="q5" value="c">
+                    <span data-i18n="testOption5c"></span>
+                </label>
+                 <label>
+                    <input type="radio" name="q5" value="d">
+                    <span data-i18n="testOption5d"></span>
+                </label>
+            </div>
+             <div class="test-question">
+                <p data-i18n="testQuestion6"></p>
+                 <label>
+                    <input type="radio" name="q6" value="a" required>
+                    <span data-i18n="testOption6a"></span>
+                </label>
+                 <label>
+                    <input type="radio" name="q6" value="b">
+                    <span data-i18n="testOption6b"></span>
+                </label>
+                <label>
+                    <input type="radio" name="q6" value="c">
+                    <span data-i18n="testOption6c"></span>
+                </label>
+                 <label>
+                    <input type="radio" name="q6" value="d">
+                    <span data-i18n="testOption6d"></span>
+                </label>
+            </div>
+             <div class="test-question">
+                <p data-i18n="testQuestion7"></p>
+                <label>
+                   <input type="radio" name="q7" value="a" required>
+                   <span data-i18n="testOption7a"></span>
+                </label>
+                <label>
+                   <input type="radio" name="q7" value="b">
+                   <span data-i18n="testOption7b"></span>
+                </label>
+                 <label>
+                   <input type="radio" name="q7" value="c">
+                   <span data-i18n="testOption7c"></span>
+                </label>
+                 <label>
+                   <input type="radio" name="q7" value="d">
+                   <span data-i18n="testOption7d"></span>
+                 </label>
+            </div>
+            <div class="test-question">
+                <p data-i18n="testQuestion8"></p>
+                 <label>
+                    <input type="radio" name="q8" value="a" required>
+                    <span data-i18n="testOption8a"></span>
+                 </label>
+                <label>
+                    <input type="radio" name="q8" value="b">
+                    <span data-i18n="testOption8b"></span>
+                </label>
+                <label>
+                    <input type="radio" name="q8" value="c">
+                    <span data-i18n="testOption8c"></span>
+                </label>
+                <label>
+                    <input type="radio" name="q8" value="d">
+                    <span data-i18n="testOption8d"></span>
+                </label>
+            </div>
+            <div class="test-question">
+                <p data-i18n="testQuestion9"></p>
+                 <label>
+                    <input type="radio" name="q9" value="a" required>
+                    <span data-i18n="testOption9a"></span>
+                 </label>
+                <label>
+                   <input type="radio" name="q9" value="b">
+                   <span data-i18n="testOption9b"></span>
+                </label>
+                 <label>
+                   <input type="radio" name="q9" value="c">
+                   <span data-i18n="testOption9c"></span>
+                </label>
+                 <label>
+                   <input type="radio" name="q9" value="d">
+                    <span data-i18n="testOption9d"></span>
+                </label>
+            </div>
+             <div class="test-question">
+                <p data-i18n="testQuestion10"></p>
+                <label>
+                    <input type="radio" name="q10" value="a" required>
+                   <span data-i18n="testOption10a"></span>
+                 </label>
+                <label>
+                   <input type="radio" name="q10" value="b">
+                   <span data-i18n="testOption10b"></span>
+                </label>
+                 <label>
+                   <input type="radio" name="q10" value="c">
+                   <span data-i18n="testOption10c"></span>
+                 </label>
+                <label>
+                    <input type="radio" name="q10" value="d">
+                    <span data-i18n="testOption10d"></span>
+                </label>
+            </div>
+            <div class="test-question">
+                <p data-i18n="testQuestion11"></p>
+                  <label>
+                    <input type="radio" name="q11" value="a" required>
+                    <span data-i18n="testOption11a"></span>
+                </label>
+                <label>
+                    <input type="radio" name="q11" value="b">
+                   <span data-i18n="testOption11b"></span>
+                </label>
+                <label>
+                   <input type="radio" name="q11" value="c">
+                   <span data-i18n="testOption11c"></span>
+                </label>
+                <label>
+                    <input type="radio" name="q11" value="d">
+                     <span data-i18n="testOption11d"></span>
+                 </label>
+            </div>
+            <div class="test-question">
+                <p data-i18n="testQuestion12"></p>
+                <label>
+                   <input type="radio" name="q12" value="a" required>
+                    <span data-i18n="testOption12a"></span>
+                 </label>
+                <label>
+                    <input type="radio" name="q12" value="b">
+                    <span data-i18n="testOption12b"></span>
+                </label>
+                <label>
+                   <input type="radio" name="q12" value="c">
+                    <span data-i18n="testOption12c"></span>
+                </label>
+                <label>
+                    <input type="radio" name="q12" value="d">
+                    <span data-i18n="testOption12d"></span>
+                </label>
+             </div>
+             <div class="test-question">
+                <p data-i18n="testQuestion13"></p>
+                <label>
+                   <input type="radio" name="q13" value="a" required>
+                    <span data-i18n="testOption13a"></span>
+                 </label>
+                <label>
+                   <input type="radio" name="q13" value="b">
+                   <span data-i18n="testOption13b"></span>
+                 </label>
+                 <label>
+                    <input type="radio" name="q13" value="c">
+                    <span data-i18n="testOption13c"></span>
+                </label>
+                <label>
+                    <input type="radio" name="q13" value="d">
+                   <span data-i18n="testOption13d"></span>
+                </label>
+             </div>
+             <div class="test-question">
+                <p data-i18n="testQuestion14"></p>
+                 <label>
+                    <input type="radio" name="q14" value="a" required>
+                    <span data-i18n="testOption14a"></span>
+                 </label>
+                <label>
+                   <input type="radio" name="q14" value="b">
+                   <span data-i18n="testOption14b"></span>
+                 </label>
+                 <label>
+                    <input type="radio" name="q14" value="c">
+                    <span data-i18n="testOption14c"></span>
+                 </label>
+                <label>
+                     <input type="radio" name="q14" value="d">
+                    <span data-i18n="testOption14d"></span>
+                </label>
+            </div>
+            <div class="test-question">
+                <p data-i18n="testQuestion15"></p>
+                 <label>
+                   <input type="radio" name="q15" value="a" required>
+                   <span data-i18n="testOption15a"></span>
+                </label>
+                <label>
+                    <input type="radio" name="q15" value="b">
+                    <span data-i18n="testOption15b"></span>
+                </label>
+               <label>
+                    <input type="radio" name="q15" value="c">
+                   <span data-i18n="testOption15c"></span>
+               </label>
+                <label>
+                    <input type="radio" name="q15" value="d">
+                    <span data-i18n="testOption15d"></span>
+                </label>
+            </div>
+            <div class="test-question">
+                <p data-i18n="testQuestion16"></p>
+                 <label>
+                    <input type="radio" name="q16" value="a" required>
+                     <span data-i18n="testOption16a"></span>
+                </label>
+                 <label>
+                    <input type="radio" name="q16" value="b">
+                     <span data-i18n="testOption16b"></span>
+                </label>
+                 <label>
+                     <input type="radio" name="q16" value="c">
+                     <span data-i18n="testOption16c"></span>
+                </label>
+                  <label>
+                    <input type="radio" name="q16" value="d">
+                     <span data-i18n="testOption16d"></span>
+                 </label>
+            </div>
+            <div class="test-question">
+                 <p data-i18n="testQuestion17"></p>
+                 <label>
+                    <input type="radio" name="q17" value="a" required>
+                    <span data-i18n="testOption17a"></span>
+                </label>
+                 <label>
+                    <input type="radio" name="q17" value="b">
+                     <span data-i18n="testOption17b"></span>
+                 </label>
+                 <label>
+                     <input type="radio" name="q17" value="c">
+                     <span data-i18n="testOption17c"></span>
+                </label>
+                <label>
+                     <input type="radio" name="q17" value="d">
+                     <span data-i18n="testOption17d"></span>
+                </label>
+            </div>
+            <div class="test-question">
+                <p data-i18n="testQuestion18"></p>
+                 <label>
+                     <input type="radio" name="q18" value="a" required>
+                    <span data-i18n="testOption18a"></span>
+                </label>
+                <label>
+                     <input type="radio" name="q18" value="b">
+                    <span data-i18n="testOption18b"></span>
+                </label>
+                <label>
+                    <input type="radio" name="q18" value="c">
+                    <span data-i18n="testOption18c"></span>
+                 </label>
+                 <label>
+                     <input type="radio" name="q18" value="d">
+                    <span data-i18n="testOption18d"></span>
+                </label>
+             </div>
+            <button type="submit" data-i18n="submitTest"></button>
+        </form>
+    </div>
+
+    <script>
+        // Inside your script.js or a <script> tag
+            if ('scrollRestoration' in history) {
+          history.scrollRestoration = 'manual';
+        }
+        
+        window.addEventListener('load', function() {
+          window.scrollTo(0, 0);
+        });
+        
+        </script>
+        
+    </body>
+    
+    </html>

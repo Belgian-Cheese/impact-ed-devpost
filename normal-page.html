@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Impact-Ed Dashboard</title>
+        <!-- Favicon -->
+        <link rel="icon" type="image/x-icon" href="favicon.png"> 
+    <link rel="stylesheet" href="normal-page.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
+        integrity="sha512-9usAa10IRO0HhonpyAIVpjrylPvoDwiPUiKdWk5t3PyolY1cOd4DSE0Ga+ri4AuTroPR5aQvXU9xC6qOPnzFeg=="
+        crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <script src="https://www.gstatic.com/firebasejs/8.6.8/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.6.8/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.6.8/firebase-firestore.js"></script>
+    <style>
+        video {
+            display: none;
+        }
+
+        .log {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.5);
+            color: white;
+            padding: 10px;
+            font-size: 14px;
+            z-index: 10;
+            border-radius: 5px;
+        }
+
+        .cursor {
+            position: fixed;
+            width: 20px;
+            height: 20px;
+            background-color: red;
+            border-radius: 50%;
+            pointer-events: none;
+            transition: left 0.1s ease-out, top 0.1s ease-out;
+            z-index: 100002;
+        }
+
+        #overlay {
+            display: none;
+        }
+
+        #loading-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(184, 139, 255, 0.9);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 2rem;
+            z-index: 1000000;
+            /* Ensure it's on top */
+        }
+
+        #loading-screen.hidden {
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="loading-screen">
+        <span data-i18n="loading">Loading...</span>
+    </div>
+    <div class="container" style="display:none;">
+        <div class="logo-container">
+            <div class="logo">
+                <span data-i18n="logoTitle">Impact Ed</span>
+            </div>
+
+        </div>
+        <div class="toolbar-container">
+            <nav class="toolbar">
+
+                <div class="menu-items-container">
+                    <ul class="menu">
+                        <li class="menu-item active" data-target="home">
+                            <i class="icon fas fa-home"></i><span data-i18n="home">Home</span>
+                        </li>
+                        <li class="menu-item" data-target="study">
+                            <i class="icon fas fa-book"></i><span data-i18n="study">Study</span>
+                        </li>
+                        <li class="menu-item" data-target="friend">
+                            <i class="icon fas fa-user-friends"></i><span data-i18n="friend">Edu Pal</span>
+                        </li>
+                        <li class="menu-item" data-target="counsellor">
+                            <i class="icon fas fa-comment-dots"></i><span data-i18n="counsellor">AI
+                                Counsellor</span>
+                        </li>
+                        <li class="menu-item" data-target="profile">
+                            <i class="icon fas fa-user"></i><span data-i18n="profile">Profile</span>
+                        </li>
+                    </ul>
+                </div>
+            </nav>
+            <div></div>
+        </div>
+        <main class="content">
+            <section id="home">
+                <div id="user-level-container">
+                    <span id="user-level-text" data-i18n="level">Level: Beginner</span>
+                </div>
+                <div class="toggle-container">
+                    <input type="checkbox" id="dark-mode-toggle">
+                    <label for="dark-mode-toggle" class="toggle-switch"></label>
+                    <span data-i18n="darkMode">Dark Mode</span>
+                </div>
+
+                <div class="welcome-banner">
+                    <h1 id="welcome-message"></h1>
+                    <p data-i18n="readyToContinue">Ready to continue your learning journey?</p>
+                </div>
+                <div class="card-container">
+                    <div class="card last-chapter-card" style="display: none;">
+                        <h2 data-i18n="lastChapter">Last Chapter</h2>
+                        <p>Chapter Name</p>
+                    </div>
+
+                    <div class="card" id="total-time-card">
+                        <h2 data-i18n="totalTimeSpent">Total Time Spent</h2>
+                        <div class="pace-display">
+                            <span class="percentage">0 hours</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-bar-inner" style="width: 0%;"></div>
+                        </div>
+                        <p data-i18n="keepUpTheGreatWork">Keep up the great work!</p>
+                    </div>
+                    <div class="card" id="subject-time-card">
+                        <h2 data-i18n="subjectTimeSpent">Time Per Subject</h2>
+                    </div>
+                    <div class="card course-progress-card">
+                        <h2 data-i18n="courseProgress">Course Progress</h2>
+                    </div>
+                </div>
+            </section>
+            <section id="study" style="display:none;">
+                <div class="study-page">
+                    <div class="back-button-container" style="display:none;">
+                        <button class="back-button"><i class="icon fas fa-arrow-left"></i> <span
+                                data-i18n="back">Back</span></button>
+                        <button id="convert-to-audio" onclick="convertToAudio()" style="margin-left: 10px;">Convert To Audio</button>
+                        <button id="play-audio" onclick="playAudio()" style="margin-left: 10px; display:none;">Play</button>
+                    </div>
+                    <div class="study-content">
+                        <ul class="study-menu" style="display:block;">
+                        </ul>
+                        <div class="chapters-container" style="display: none;">
+                            <div class="chapters-container-inner">
+                            </div>
+                        </div>
+                        <div class="chapter-content-container" style="display: none;">
+                            <div class="content-area">
+                                <h3 class="chapter-title"></h3>
+                                <div class="content-text"></div>
+                            </div>
+                            <div class="loading-indicator" style="display: none;">
+                                <p data-i18n="loading">Loading...</p>
+                            </div>
+                            <div class="error-message" style="display: none;">
+                                <p class="error-text" data-i18n="errorLoading">Error loading content. Please try
+                                    again.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        <section id="friend" style="display:none;">
+                <h2><span data-i18n="friend">Edu Pal</span></h2>
+                <div class="chat-container">
+                    <div class="chat-box" id="friend-chat" style="overflow-y: auto;">
+                    </div> <!-- Adjust max-height as needed -->
+                    <div class="input-area">
+                        <input type="text" id="friend-input" data-i18n="friendPlaceholder" placeholder="Ask me anything...">
+                        <button id="friend-send" data-i18n="send">Send</button>
+                    </div>
+                </div>
+            </section>
+            <section id="counsellor" style="display:none;">
+                <h2><span data-i18n="counsellor">Edu Pal</span></h2>
+                <div class="chat-container">
+                    <div class="chat-box" id="counsellor-chat" style="overflow-y: auto;">
+                    </div>
+                    <div class="input-area">
+                        <input type="text" id="counsellor-input" data-i18n="counsellorPlaceholder" placeholder="How are you feeling today?">
+                        <button id="counsellor-send" data-i18n="send">Send</button>
+                    </div>
+                </div>
+            </section>
+
+            <script>
+                document.getElementById('counsellor-send').addEventListener('click', function () {
+                    const message = document.getElementById('counsellor-input').value;
+
+                    // Simulate a counsellor response
+
+
+                    // Add the user's message to the chat box
+
+
+                    // Scroll to bottom *after* adding the new message
+                    scrollToBottom('counsellor-chat');
+
+                    // Clear the input field
+                    document.getElementById('counsellor-input').value = "";
+                });
+            </script>
+            <section id="profile" style="display:none;">
+                <h2>Profile Section</h2>
+                <div id="profile-details">
+                </div>
+                <button id="logout-button" data-i18n="logout">Logout</button>
+            </section>
+        </main>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="normal-i18n.js"></script>
+    <script src="normal-page.js"></script>
+    <script>
+        // Your web app's Firebase configuration
+        var firebaseConfig = {
+            apiKey: "AIzaSyCbGgulYzSiHnlfF0GpMAYc_hF960KXpRE",
+            authDomain: "inspireed-b0ab2.firebaseapp.com",
+            projectId: "inspireed-b0ab2",
+            storageBucket: "inspireed-b0ab2.firebasestorage.app",
+            messagingSenderId: "906121434476",
+            appId: "1:906121434476:web:018e638708ef0affec4f49",
+            measurementId: "G-L02KPH3LPC"
+        };
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+
+        const loadingScreen = document.getElementById('loading-screen');
+        const container = document.querySelector('.container');
+        const welcomeMessage = document.getElementById('welcome-message');
+        const profileDetails = document.getElementById('profile-details');
+        const db = firebase.firestore();
+        function waitForFirebase() {
+            return new Promise((resolve) => {
+                firebase.auth().onAuthStateChanged((user) => {
+                    resolve(user)
+                });
+            });
+        }
+
+        //Check authentication on page load
+        (async function () {
+            const user = await waitForFirebase();
+            if (!user) {
+                // Redirect to login page if user is not logged in
+                window.location.href = 'index.html';
+            } else {
+                // Fetch user details from Firestore and show the dashboard
+                try {
+                    const doc = await db.collection('users').doc(user.email).get();
+                    if (doc.exists) {
+                        const userData = doc.data();
+                        welcomeMessage.innerHTML = `<span data-i18n="welcomeBack">Welcome back,</span> ${userData.name}!`;
+                        profileDetails.innerHTML = `
+                               <p><strong data-i18n="name">Name:</strong> ${userData.name}</p>
+                                <p><strong data-i18n="email">Email:</strong> ${userData.email}</p>
+                                <p><strong data-i18n="language">Language:</strong> ${userData.language}</p>
+                         `;
+                        localStorage.setItem('completedChapters', JSON.stringify(userData.progress || {}));
+                        // Fetch total time spent from Firestore
+                        let totalTime = 0;
+                        if (userData.totaltimespent) {
+                            totalTime = userData.totaltimespent;
+                            localStorage.setItem('totalTimeSpent', totalTime.toString());
+                        }
+                        updateProgressDisplay();
+                        loadingScreen.classList.add('hidden');
+                        container.style.display = "flex";
+                        updateTotalTimeDisplay();
+
+                    } else {
+                        welcomeMessage.innerHTML = `<span data-i18n="welcomeBack">Welcome back,</span>`;
+                        loadingScreen.classList.add('hidden');
+                        container.style.display = "flex";
+                    }
+
+
+                } catch (e) {
+                    console.log(e);
+                    welcomeMessage.innerHTML = `<span data-i18n="welcomeBack">Welcome back,</span>`;
+                    loadingScreen.classList.add('hidden');
+                    container.style.display = "flex";
+                }
+            }
+        })();
+
+        function updateProgress(chapterName, subjectName) {
+            //Get the users email
+            const userEmail = firebase.auth().currentUser.email;
+            // Get current progress data from local storage and from firestore
+            let completedChapters = JSON.parse(localStorage.getItem('completedChapters') || '{}');
+
+            // Update completed chapters
+            completedChapters[chapterName] = subjectName;
+            localStorage.setItem('completedChapters', JSON.stringify(completedChapters));
+            localStorage.setItem('lastCompletedChapter', chapterName)
+
+            // Upload the progress to firebase
+            db.collection('users').doc(userEmail).update({
+                progress: completedChapters
+            })
+                .then(() => {
+                    console.log('Progress updated')
+                    updateProgressDisplay()
+                })
+                .catch((error) => {
+                    console.error('Error updating progress', error);
+                });
+        }
+
+
+    </script>
+
+    <!-- Add before </body> -->
+    <div id="placementTestModal"
+        style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000001;">
+        <div class="modal-content">
+            <h2 data-i18n="placementTestTitle"></h2>
+            <p data-i18n="placementTestDescription"></p>
+            <form id="placementTestForm">
+                <div class="test-question">
+                    <p data-i18n="testQuestion1"></p>
+                    <label>
+                        <input type="radio" name="q1" value="a" required>
+                        <span data-i18n="testOption1a"></span>
+                    </label>
+                    <label>
+                        <input type="radio" name="q1" value="b">
+                        <span data-i18n="testOption1b"></span>
+                    </label>
+                    <label>
+                        <input type="radio" name="q1" value="c">
+                        <span data-i18n="testOption1c"></span>
+                    </label>
+                    <label>
+                        <input type="radio" name="q1" value="d">
+                        <span data-i18n="testOption1d"></span>
+                    </label>
+                </div>
+                <div class="test-question">
+                    <p data-i18n="testQuestion2"></p>
+                    <label>
+                        <input type="radio" name="q2" value="a" required>
+                        <span data-i18n="testOption2a"></span>
+                    </label>
+                    <label>
+                        <input type="radio" name="q2" value="b">
+                        <span data-i18n="testOption2b"></span>
+                    </label>
+                    <label>
+                        <input type="radio" name="q2" value="c" required>
+                        <span data-i18n="testOption2c"></span>
+                    </label>
+                    <label>
+                        <input type="radio" name="q2" value="d" required>
+                        <span data-i18n="testOption2d"></span>
+                    </label>
+                </div>
+                <div class="test-question">
+                    <p data-i18n="testQuestion3"></p>
+                    <label>
+                        <input type="radio" name="q3" value="a" required>
+                        <span data-i18n="testOption3a"></span>
+                    </label>
+                    <label>
+                        <input type="radio" name="q3" value="b">
+                        <span data-i18n="testOption3b"></span>
+                    </label>
+                    <label>
+                        <input type="radio" name="q3" value="c" required>
+                        <span data-i18n="testOption3c"></span>
+                    </label>
+                    <label>
+                        <input type="radio" name="q3" value="d" required>
+                        <span data-i18n="testOption3d"></span>
+                    </label>
+                </div>
+                <div class="test-question">
+                    <p data-i18n="testQuestion4"></p>
+                    <label>
+                        <input type="radio" name="q4" value="a" required>
+                        <span data-i18n="testOption4a"></span>
+                    </label>
+                    <label>
+                        <input type="radio" name="q4" value="b">
+                        <span data-i18n="testOption4b"></span>
+                    </label>
+                    <label>
+                        <input type="radio" name="q4" value="c">
+                        <span data-i18n="testOption4c"></span>
+                    </label>
+                    <label>
+                        <input type="radio" name="q4" value="d">
+                        <span data-i18n="testOption4d"></span>
+                    </label>
+                </div>
+                <div class="test-question">
+                    <p data-i18n="testQuestion5"></p>
+                    <label>
+                        <input type="radio" name="q5" value="a" required>
+                        <span data-i18n="testOption5a"></span>
+                    </label>
+                    <label>
+                        <input type="radio" name="q5" value="b">
+                        <span data-i18n="testOption5b"></span>
+                    </label>
+                    <label>
+                        <input type="radio" name="q5" value="c">
+                        <span data-i18n="testOption5c"></span>
+                    </label>
+                    <label>
+                        <input type="radio" name="q5" value="d">
+                        <span data-i18n="testOption5d"></span>
+                    </label>
+                </div>
+                <div class="test-question">
+                    <p data-i18n="testQuestion6"></p>
+                    <label>
+                        <input type="radio" name="q6" value="a" required>
+                        <span data-i18n="testOption6a"></span>
+                    </label>
+                    <label>
+                        <input type="radio" name="q6" value="b">
+                        <span data-i18n="testOption6b"></span>
+                    </label>
+                    <label>
+                        <input type="radio" name="q6" value="c">
+                        <span data-i18n="testOption6c"></span>
+                    </label>
+                    <label>
+                        <input type="radio" name="q6" value="d">
+                        <span data-i18n="testOption6d"></span>
+                    </label>
+                </div>
+                <div class="test-question">
+                    <p data-i18n="testQuestion7"></p>
+                    <label>
+                        <input type="radio" name="q7" value="a" required>
+                        <span data-i18n="testOption7a"></span>
+                    </label>
+                    <label>
+                        <input type="radio" name="q7" value="b">
+                        <span data-i18n="testOption7b"></span>
+                    </label>
+                    <label>
+                        <input type="radio" name="q7" value="c">
+                        <span data-i18n="testOption7c"></span>
+                    </label>
+                    <label>
+                        <input type="radio" name="q7" value="d">
+                        <span data-i18n="testOption7d"></span>
+                    </label>
+                </div>
+                <div class="test-question">
+                    <p data-i18n="testQuestion8"></p>
+                    <label>
+                        <input type="radio" name="q8" value="a" required>
+                        <span data-i18n="testOption8a"></span>
+                    </label>
+                    <label>
+                        <input type="radio" name="q8" value="b">
+                        <span data-i18n="testOption8b"></span>
+                    </label>
+                    <label>
+                        <input type="radio" name="q8" value="c">
+                        <span data-i18n="testOption8c"></span>
+                    </label>
+                    <label>
+                        <input type="radio" name="q8" value="d">
+                        <span data-i18n="testOption8d"></span>
+                    </label>
+                </div>
+                <div class="test-question">
+                    <p data-i18n="testQuestion9"></p>
+                    <label>
+                        <input type="radio" name="q9" value="a" required>
+                        <span data-i18n="testOption9a"></span>
+                    </label>
+                    <label>
+                        <input type="radio" name="q9" value="b">
+                        <span data-i18n="testOption9b"></span>
+                    </label>
+                    <label>
+                        <input type="radio" name="q9" value="c">
+                        <span data-i18n="testOption9c"></span>
+                    </label>
+                    <label>
+                        <input type="radio" name="q9" value="d">
+                        <span data-i18n="testOption9d"></span>
+                    </label>
+                </div>
+                <div class="test-question">
+                    <p data-i18n="testQuestion10"></p>
+                    <label>
+                        <input type="radio" name="q10" value="a" required>
+                        <span data-i18n="testOption10a"></span>
+                    </label>
+                    <label>
+                        <input type="radio" name="q10" value="b">
+                        <span data-i18n="testOption10b"></span>
+                    </label>
+                    <label>
+                        <input type="radio" name="q10" value="c">
+                        <span data-i18n="testOption10c"></span>
+                    </label>
+                    <label>
+                        <input type="radio" name="q10" value="d">
+                        <span data-i18n="testOption10d"></span>
+                    </label>
+                </div>
+                <div class="test-question">
+                    <p data-i18n="testQuestion11"></p>
+                    <label>
+                        <input type="radio" name="q11" value="a" required>
+                        <span data-i18n="testOption11a"></span>
+                    </label>
+                    <label>
+                        <input type="radio" name="q11" value="b">
+                        <span data-i18n="testOption11b"></span>
+                    </label>
+                    <label>
+                        <input type="radio" name="q11" value="c">
+                        <span data-i18n="testOption11c"></span>
+                    </label>
+                    <label>
+                        <input type="radio" name="q11" value="d">
+                        <span data-i18n="testOption11d"></span>
+                    </label>
+                </div>
+                <div class="test-question">
+                    <p data-i18n="testQuestion12"></p>
+                    <label>
+                        <input type="radio" name="q12" value="a" required>
+                        <span data-i18n="testOption12a"></span>
+                    </label>
+                    <label>
+                        <input type="radio" name="q12" value="b">
+                        <span data-i18n="testOption12b"></span>
+                    </label>
+                    <label>
+                        <input type="radio" name="q12" value="c">
+                        <span data-i18n="testOption12c"></span>
+                    </label>
+                    <label>
+                        <input type="radio" name="q12" value="d">
+                        <span data-i18n="testOption12d"></span>
+                    </label>
+                </div>
+                <div class="test-question">
+                    <p data-i18n="testQuestion13"></p>
+                    <label>
+                        <input type="radio" name="q13" value="a" required>
+                        <span data-i18n="testOption13a"></span>
+                    </label>
+                    <label>
+                        <input type="radio" name="q13" value="b">
+                        <span data-i18n="testOption13b"></span>
+                    </label>
+                    <label>
+                        <input type="radio" name="q13" value="c">
+                        <span data-i18n="testOption13c"></span>
+                    </label>
+                    <label>
+                        <input type="radio" name="q13" value="d">
+                        <span data-i18n="testOption13d"></span>
+                    </label>
+                </div>
+                <div class="test-question">
+                    <p data-i18n="testQuestion14"></p>
+                    <label>
+                        <input type="radio" name="q14" value="a" required>
+                        <span data-i18n="testOption14a"></span>
+                    </label>
+                    <label>
+                        <input type="radio" name="q14" value="b">
+                        <span data-i18n="testOption14b"></span>
+                    </label>
+                    <label>
+                        <input type="radio" name="q14" value="c">
+                        <span data-i18n="testOption14c"></span>
+                    </label>
+                    <label>
+                        <input type="radio" name="q14" value="d">
+                        <span data-i18n="testOption14d"></span>
+                    </label>
+                </div>
+                <div class="test-question">
+                    <p data-i18n="testQuestion15"></p>
+                    <label>
+                        <input type="radio" name="q15" value="a" required>
+                        <span data-i18n="testOption15a"></span>
+                    </label>
+                    <label>
+                        <input type="radio" name="q15" value="b">
+                        <span data-i18n="testOption15b"></span>
+                    </label>
+                    <label>
+                        <input type="radio" name="q15" value="c">
+                        <span data-i18n="testOption15c"></span>
+                    </label>
+                    <label>
+                        <input type="radio" name="q15" value="d">
+                        <span data-i18n="testOption15d"></span>
+                    </label>
+                </div>
+                <div class="test-question">
+                    <p data-i18n="testQuestion16"></p>
+                    <label>
+                        <input type="radio" name="q16" value="a" required>
+                        <span data-i18n="testOption16a"></span>
+                    </label>
+                    <label>
+                        <input type="radio" name="q16" value="b">
+                        <span data-i18n="testOption16b"></span>
+                    </label>
+                    <label>
+                        <input type="radio" name="q16" value="c">
+                        <span data-i18n="testOption16c"></span>
+                    </label>
+                    <label>
+                        <input type="radio" name="q16" value="d">
+                        <span data-i18n="testOption16d"></span>
+                    </label>
+                </div>
+                <div class="test-question">
+                    <p data-i18n="testQuestion17"></p>
+                    <label>
+                        <input type="radio" name="q17" value="a" required>
+                        <span data-i18n="testOption17a"></span>
+                    </label>
+                    <label>
+                        <input type="radio" name="q17" value="b">
+                        <span data-i18n="testOption17b"></span>
+                    </label>
+                    <label>
+                        <input type="radio" name="q17" value="c">
+                        <span data-i18n="testOption17c"></span>
+                    </label>
+                    <label>
+                        <input type="radio" name="q17" value="d">
+                        <span data-i18n="testOption17d"></span>
+                    </label>
+                </div>
+                <div class="test-question">
+                    <p data-i18n="testQuestion18"></p>
+                    <label>
+                        <input type="radio" name="q18" value="a" required>
+                        <span data-i18n="testOption18a"></span>
+                    </label>
+                    <label>
+                        <input type="radio" name="q18" value="b">
+                        <span data-i18n="testOption18b"></span>
+                    </label>
+                    <label>
+                        <input type="radio" name="q18" value="c">
+                        <span data-i18n="testOption18c"></span>
+                    </label>
+                    <label>
+                        <input type="radio" name="q18" value="d">
+                        <span data-i18n="testOption18d"></span>
+                    </label>
+                </div>
+                <button type="submit" data-i18n="submitTest"></button>
+            </form>
+        </div>
+
+        <script>
+            // Inside your script.js or a <script> tag
+            if ('scrollRestoration' in history) {
+                history.scrollRestoration = 'manual';
+            }
+
+            window.addEventListener('load', function () {
+                window.scrollTo(0, 0);
+            });
+
+        </script>
+
+</body>
+
+</html>
