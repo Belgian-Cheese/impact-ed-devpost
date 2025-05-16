@@ -1,4 +1,5 @@
 //ADD YOUR OWN PROJECT KEYS!!
+//REMEMBER TO ADD THE KEYS IN PARA-PAGE.HTML and NORMAL-PAGE.HTML TOO!!
 var firebaseConfig = {
     apiKey: "",
     authDomain: "",
