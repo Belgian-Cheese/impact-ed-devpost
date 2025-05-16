@@ -12,6 +12,15 @@ function scrollToSectionAndOpenSignupModal() {
         openSignupModal();
     }); // Adjust the timeout (in milliseconds)
 }
+var firebaseConfig = {
+    apiKey: "AIzaSyCbGgulYzSiHnlfF0GpMAYc_hF960KXpRE",
+    authDomain: "inspireed-b0ab2.firebaseapp.com",
+    projectId: "inspireed-b0ab2",
+    storageBucket: "inspireed-b0ab2.firebasestorage.app",
+    messagingSenderId: "906121434476",
+    appId: "1:906121434476:web:018e638708ef0affec4f49",
+    measurementId: "G-L02KPH3LPC"
+};
 // Initialize Firebase
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
