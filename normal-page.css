@@ -132,8 +132,7 @@ body.dark-mode {
     .toggle-container {
         display: inline-block;
         padding: 0.5rem 0.75rem; /* 8px / 16px, 12px / 16px */
-        height: 19vh;
-        top: 12.75rem !important;
+        top: 15.50rem !important;
         border-radius: 0.3125rem; /* 5px / 16px */
         font-size: 0.9rem;
         margin-right: 0.9375rem; /* 15px / 16px */

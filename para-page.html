@@ -14,9 +14,6 @@
     <!-- Mediapipe Imports -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.6.8/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.6.8/firebase-auth.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.6.8/firebase-firestore.js"></script>
     <style>
         video {
             display: none;
@@ -209,108 +206,7 @@
     <script src="i18n.js"></script>
     <script src="para-script.js"></script>
     <script>
-        // Your web app's Firebase configuration 
-        
-        //ADD YOUR OWN PROJECT VARIABLES!!
-        var firebaseConfig = {
-            apiKey: "",
-            authDomain: "",
-            projectId: "",
-            storageBucket: "",
-            messagingSenderId: "",
-            appId: "",
-            measurementId: ""
-        };
-        // Initialize Firebase
-        firebase.initializeApp(firebaseConfig);
-
-        const loadingScreen = document.getElementById('loading-screen');
-        const container = document.querySelector('.container');
-        const welcomeMessage = document.getElementById('welcome-message');
-        const profileDetails = document.getElementById('profile-details');
-        const db = firebase.firestore();
-           function waitForFirebase() {
-             return new Promise((resolve) => {
-                firebase.auth().onAuthStateChanged((user) => {
-                     resolve(user)
-                });
-            });
-         }
-
-        //Check authentication on page load
-        (async function() {
-            const user = await waitForFirebase();
-            if (!user) {
-                // Redirect to login page if user is not logged in
-                window.location.href = 'index.html';
-            } else {
-               // Fetch user details from Firestore and show the dashboard
-                 try{
-                    const doc = await db.collection('users').doc(user.email).get();
-                    if(doc.exists){
-                          const userData = doc.data();
-                           welcomeMessage.innerHTML = `<span data-i18n="welcomeBack">Welcome back,</span> ${userData.name}!`;
-                            profileDetails.innerHTML = `
-                               <p><strong data-i18n="name">Name:</strong> ${userData.name}</p>
-                                <p><strong data-i18n="email">Email:</strong> ${userData.email}</p>
-                                <p><strong data-i18n="language">Language:</strong> ${userData.language}</p>
-                         `;
-                             localStorage.setItem('completedChapters', JSON.stringify(userData.progress || {}));
-                               // Fetch total time spent from Firestore
-                                 let totalTime = 0;
-                                 if (userData.totaltimespent) {
-                                        totalTime = userData.totaltimespent;
-                                        localStorage.setItem('totalTimeSpent', totalTime.toString());
-                                    }
-                                     updateProgressDisplay();
-                                      loadingScreen.classList.add('hidden');
-                                     container.style.display = "flex";
-                                      updateTotalTimeDisplay();
-
-                    } else{
-                        welcomeMessage.innerHTML = `<span data-i18n="welcomeBack">Welcome back,</span>`;
-                        loadingScreen.classList.add('hidden');
-                        container.style.display = "flex";
-                       }
-
-
-                } catch(e) {
-                   console.log(e);
-                     welcomeMessage.innerHTML = `<span data-i18n="welcomeBack">Welcome back,</span>`;
-                     loadingScreen.classList.add('hidden');
-                    container.style.display = "flex";
-                 }
-            }
-        })();
-
-        function updateProgress(chapterName, subjectName) {
-            //Get the users email
-            const userEmail = firebase.auth().currentUser.email;
-             // Get current progress data from local storage and from firestore
-            let completedChapters = JSON.parse(localStorage.getItem('completedChapters') || '{}');
-
-            // Update completed chapters
-              completedChapters[chapterName] = subjectName;
-               localStorage.setItem('completedChapters', JSON.stringify(completedChapters));
-              localStorage.setItem('lastCompletedChapter', chapterName)
-
-             // Upload the progress to firebase
-              db.collection('users').doc(userEmail).update({
-                progress: completedChapters
-            })
-            .then(() => {
-              console.log('Progress updated')
-              updateProgressDisplay()
-            })
-             .catch((error) => {
-                console.error('Error updating progress', error);
-            });
-          }
-
-          
-
-
-        // Mediapipe Iris Tracking Logic (Moved Here)
+        // Mediapipe Iris Tracking Logic 
         const LEFT_EYE_LANDMARKS = [33, 133, 159, 145, 160];
         const RIGHT_EYE_LANDMARKS = [362, 263, 386, 374, 387];
         const IRIS_LEFT_LANDMARKS = [469, 470, 471, 472];
@@ -757,9 +653,9 @@ cancelSosButton.addEventListener('click', async () => {
     audio = null;
 });
 
-    </script>
+</script>
 
-<!-- Add before </body> -->
+
 <div id="placementTestModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000;">
     <div class="modal-content">
         <h2 data-i18n="placementTestTitle"></h2>

@@ -1,34 +1,17 @@
-//ADD YOUR OWN PROJECT KEYS!!
-//REMEMBER TO ADD THE KEYS IN PARA-PAGE.HTML and NORMAL-PAGE.HTML TOO!!
-var firebaseConfig = {
-    apiKey: "",
-    authDomain: "",
-    projectId: "",
-    storageBucket: "",
-    messagingSenderId: "",
-    appId: "",
-    measurementId: ""
-};
+// script.js (Modified to use backend API)
 
+const API_BASE_URL = 'https://login-server-213051243033.asia-south2.run.app'; // Replace with your deployed backend URL in production
 
-
-// script.js (Modified with Email Verification)
+// Function to scroll to the top and open signup modal
 function scrollToSectionAndOpenSignupModal() {
-    // Scroll to the top of the page
     window.scrollTo({
         top: 0,
         behavior: 'smooth'
     });
-
-    // Wait for the scrolling to complete (adjust timeout if needed)
     setTimeout(function() {
-        // Open the signup modal
         openSignupModal();
-    }); // Adjust the timeout (in milliseconds)
+    }, 500); // Adjust timeout if needed
 }
-// Initialize Firebase
-firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
 
 // Function to extract URL parameters
 function getParameterByName(name, url = window.location.href) {
@@ -40,55 +23,48 @@ function getParameterByName(name, url = window.location.href) {
     return decodeURIComponent(results[2].replace(/\+/g, ' '));
 }
 
+// Adjust this function to navigate to the correct page based on the response.
+function handleLoginSuccess(userData) {
+    if (userData.userType) {
+        if (userData.userType === 'For People Without Motor Abilities') {
+            window.location.href = `para-page.html?email=${encodeURIComponent(userData.email)}`;
+        } else {
+            window.location.href = `normal-page.html?email=${encodeURIComponent(userData.email)}`;
+        }
+    } else {
+        showAlertModal("User type is not defined. Please contact support.");
+    }
+}
+
 function login() {
     var email = document.getElementById('login-email').value;
     var password = document.getElementById('login-password').value;
 
-    // Email validation: must be all lowercase
+    // Email validation: must be all lowercase (can also be handled by backend, but good for UX)
     if (email !== email.toLowerCase()) {
         showAlertModal("Email must be in all lowercase letters.");
         return;
     }
 
-    firebase.auth().signInWithEmailAndPassword(email, password)
-        .then((userCredential) => {
-            // Signed in
-            const user = userCredential.user;
-
-            if (!user.emailVerified) {
-                showAlertModal("Please verify your email before logging in.");
-                firebase.auth().signOut(); // Sign out the user to prevent usage.
-                return;
-            }
-
-            db.collection('users').doc(email).get().then((doc) => {
-                if (doc.exists) {
-                    const userData = doc.data();
-                    // Check if userType exists before redirecting
-                    if (userData.userType) {
-                        if (userData.userType === 'For People Without Motor Abilities') {
-                            window.location.href = 'para-page.html';
-                        } else {
-                            window.location.href = 'normal-page.html';
-                        }
-                    } else {
-                        // Handle the case where userType is missing
-                        showAlertModal("User type is not defined. Please contact support.");
-                    }
-
-                }
-                else {
-                    showAlertModal("User data not found");
-                }
-            }).catch((error) => {
-                showAlertModal("Error retrieving user data");
-            });
-        })
-        .catch((error) => {
-            var errorCode = error.code;
-            var errorMessage = error.message;
-            showAlertModal("Invalid Credentials");
-        });
+    fetch(`${API_BASE_URL}/login`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ email, password })
+    })
+    .then(response => {
+        if (!response.ok) {
+            return response.json().then(err => { throw new Error(err.error || 'Login failed'); });
+        }
+        return response.json();
+    })
+    .then(userData => {
+        handleLoginSuccess(userData);
+    })
+    .catch(error => {
+        showAlertModal(error.message || 'Invalid Credentials');
+    });
 }
 
 let signupMode = false;
@@ -137,52 +113,48 @@ async function signup() {
         return;
     }
 
-    try {
-        const userCredential = await firebase.auth().createUserWithEmailAndPassword(email, password);
-        const user = userCredential.user;
-
-        // Send email verification
-        await user.sendEmailVerification();
-
-        await db.collection('users').doc(email).set({
-            name: name,
-            language: language,
-            email: email,
-            userType: userType,
-            mentalDisorder: mentalDisorder,
-            progress: {}
-        });
-        showAlertModal("Signed up successfully! Please check your email to verify your account.");
+    fetch(`${API_BASE_URL}/signup`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ name, email, userType, mentalDisorder, language, password })
+    })
+    .then(response => {
+        if (!response.ok) {
+            return response.json().then(err => { throw new Error(err.error || 'Signup failed'); });
+        }
+        return response.json();
+    })
+    .then(data => {
+        showAlertModal(data.message || "Signed up successfully! Please check your email to verify your account.");
         signupMode = false;
         document.getElementById('signup-form').style.display = 'none';
         document.getElementById('login-form').style.display = 'block';
         document.getElementById('signupLink').style.display = 'inline';
         document.getElementById('loginLink').style.display = 'none';
-
-    } catch (error) {
-        var errorCode = error.code;
-        var errorMessage = error.message;
-        showAlertModal(errorMessage);
-    }
+        // Optionally reset form fields here
+        closeModal(); // Close modal on successful signup
+    })
+    .catch(error => {
+        showAlertModal(error.message || 'Signup failed');
+    });
 }
 
 function openModal() {
     const modal = document.getElementById('authModal');
     const modalContent = modal.querySelector('.modal-content');
     modal.style.display = 'flex';
-    // Add initial transform
     modalContent.style.transform = 'translateY(-20px)';
-    // Force reflow
-    modalContent.offsetHeight;
-    // Animate to final position
+    modalContent.offsetHeight; // Force reflow
     modalContent.style.transform = 'translateY(0)';
     document.getElementById('login-form').style.display = 'block';
     document.getElementById('signup-form').style.display = 'none';
+    document.body.classList.add("modal-open"); // Prevent body scroll
 }
 
 function closeModal() {
     document.getElementById('authModal').style.display = 'none';
-    // Reset all
     document.getElementById('login-form').style.display = 'block';
     document.getElementById('signup-form').style.display = 'none';
     document.getElementById('reset-password-form').style.display = 'none';
@@ -199,11 +171,12 @@ function closeModal() {
     const specialCharRule = document.getElementById('special-char-rule');
     const lengthRule = document.getElementById('length-rule');
 
-    lowercaseRule.style.display = 'block';
-    uppercaseRule.style.display = 'block';
-    numberRule.style.display = 'block';
-    specialCharRule.style.display = 'block';
-    lengthRule.style.display = 'block';
+    if (lowercaseRule) lowercaseRule.classList.remove('hidden'); // Ensure it's visible by default if not hidden
+    if (uppercaseRule) uppercaseRule.classList.remove('hidden');
+    if (numberRule) numberRule.classList.remove('hidden');
+    if (specialCharRule) specialCharRule.classList.remove('hidden');
+    if (lengthRule) lengthRule.classList.remove('hidden');
+
 
     document.getElementById('signup-password').value = '';
     document.getElementById('signup-confirm-password').value = '';
@@ -213,32 +186,38 @@ function closeModal() {
     document.getElementById('signup-mental-disorder').value = 'No Mental Disorder';
     document.getElementById('signup-user-type').value = 'For People Without Motor Abilities';
     document.getElementById('terms-checkbox').checked = false;
-    document.getElementById('signupButton').disabled = true;
+    if (document.getElementById('signupButton')) {
+        document.getElementById('signupButton').disabled = true;
+         document.getElementById('signupButton').style.opacity = "0.5";
+        document.getElementById('signupButton').style.cursor = "not-allowed";
+    }
 
-    // Reset device warning
-    document.getElementById('device-warning').style.display = 'none';
+
+    if (document.getElementById('device-warning')) {
+        document.getElementById('device-warning').style.display = 'none';
+    }
+    document.body.classList.remove("modal-open"); // Re-enable body scroll
 }
 
 function showSignupFields() {
-    document.getElementById('signup-form').style.display = 'block';
     document.getElementById('login-form').style.display = 'none';
+    document.getElementById('signup-form').style.display = 'block';
     document.getElementById('reset-password-form').style.display = 'none';
     document.getElementById('signupLink').style.display = 'none';
     document.getElementById('loginLink').style.display = 'inline';
-    document.getElementById('signup-password').type = 'text';
+    document.getElementById('signup-password').type = 'text'; // Show password as text initially
     document.getElementById('signup-confirm-password').type = 'password';
 
     signupMode = true;
 
-    // Initial Display
     document.getElementById('password-rules').style.display = 'block';
-    document.getElementById('lowercase-rule').style.display = 'block';
-    document.getElementById('uppercase-rule').style.display = 'block';
-    document.getElementById('number-rule').style.display = 'block';
-    document.getElementById('special-char-rule').style.display = 'block';
-    document.getElementById('length-rule').style.display = 'block';
-    document.getElementById('password-match').style.display = 'none';
-    validateDeviceType(); //validate when opening for the first time
+    document.getElementById('lowercase-rule').style.display = 'block'; // Show rule
+    document.getElementById('uppercase-rule').style.display = 'block'; // Show rule
+    document.getElementById('number-rule').style.display = 'block';     // Show rule
+    document.getElementById('special-char-rule').style.display = 'block';// Show rule
+    document.getElementById('length-rule').style.display = 'block';     // Show rule
+    document.getElementById('password-match').style.display = 'none'; // Hide match initially
+    validateDeviceType();
     validateTerms();
 }
 
@@ -251,10 +230,8 @@ function showLoginFields() {
     document.getElementById('signup-form').style.display = 'none';
     document.getElementById('login-form').style.display = 'block';
     document.getElementById('reset-password-form').style.display = 'none';
-
     document.getElementById('signupLink').style.display = 'inline';
     document.getElementById('loginLink').style.display = 'none';
-
     signupMode = false;
 }
 
@@ -273,6 +250,7 @@ function validatePasswordRules() {
     };
 
     Object.entries(rules).forEach(([key, { elem, test }]) => {
+        if (!elem) return; // Guard against null elements
         if (test instanceof RegExp ? test.test(password) : test(password)) {
             if (!elem.classList.contains('hidden')) {
                 elem.classList.add('hidden');
@@ -289,26 +267,38 @@ function validatePasswordRules() {
 function validateConfirmPassword() {
     const password = document.getElementById('signup-password').value;
     const confirmPassword = document.getElementById('signup-confirm-password').value;
-    const passwordMatch = document.getElementById('password-match');
+    const passwordMatchDiv = document.getElementById('password-match');
 
-    // Show the warning div
-    document.getElementById('password-match').style.display = 'block';
+    if (!passwordMatchDiv) return; // Guard clause
+
+    passwordMatchDiv.style.display = 'block'; // Show the warning div
 
     if (password === confirmPassword && password !== '') {
-        passwordMatch.classList.add('hidden');
+        if (!passwordMatchDiv.classList.contains('hidden')) {
+            passwordMatchDiv.classList.add('hidden');
+        }
     } else {
-        passwordMatch.classList.remove('hidden');
+        if (passwordMatchDiv.classList.contains('hidden')) {
+            passwordMatchDiv.classList.remove('hidden');
+        }
     }
     validateTerms();
 }
 
 function showAlertModal(message) {
-    document.getElementById('alertModal').style.display = 'flex';
-    document.getElementById('alertMessage').textContent = message;
+    const alertModal = document.getElementById('alertModal');
+    const alertMessage = document.getElementById('alertMessage');
+    if (alertModal && alertMessage) {
+        alertMessage.textContent = message;
+        alertModal.style.display = 'flex';
+    }
 }
 
 function closeAlertModal() {
-    document.getElementById('alertModal').style.display = 'none';
+    const alertModal = document.getElementById('alertModal');
+    if (alertModal) {
+        alertModal.style.display = 'none';
+    }
 }
 
 // Intersection Observer for animating feature cards and stat cards
@@ -325,50 +315,63 @@ const observer = new IntersectionObserver((entries) => {
                 entry.target.classList.add('animate');
             } else if (entry.target.classList.contains('stat-card') && !entry.target.classList.contains('animate')) {
                 entry.target.classList.add('animate');
-
-                // Start counting animation
                 const numberElement = entry.target.querySelector('.stat-number');
                 const targetNumber = parseInt(entry.target.dataset.stat);
-                animateNumber(numberElement, targetNumber);
+                if (numberElement) {
+                    animateNumber(numberElement, targetNumber);
+                }
             }
+            // observer.unobserve(entry.target); // Optional: unobserve after animation
         }
     });
 }, observerOptions);
 
-// Observe feature cards
 document.querySelectorAll('.feature-card').forEach(card => {
     observer.observe(card);
 });
 
-// Observe stat cards
 document.querySelectorAll('.stat-card').forEach(card => {
     observer.observe(card);
 });
 
-// Number animation function
 function animateNumber(element, target) {
     let current = 0;
-    const duration = 1000; // 2 seconds
-    const step = target / (duration / 16); // approximately 60 FPS
-
+    const duration = 1000; // 1 second
+    const stepTime = Math.abs(Math.floor(duration / target)); // time per step
+    
     function update() {
-        current = Math.min(current + step, target);
+        current += 1; // Increment by 1
         element.textContent = Math.round(current);
-
         if (current < target) {
-            requestAnimationFrame(update);
+            setTimeout(update, stepTime > 0 ? stepTime : 16); // Ensure stepTime is at least 1ms
+        } else {
+            element.textContent = target; // Ensure final value is exact
         }
     }
-
-    update();
+    if (target > 0) { // Only start if target is greater than 0
+       update();
+    } else {
+       element.textContent = target; // Set to 0 if target is 0
+    }
 }
 
 function openTermsModal() {
-    document.getElementById('termsModal').style.display = 'flex';
+    const termsModal = document.getElementById('termsModal');
+    if (termsModal) {
+        termsModal.style.display = 'flex';
+        document.body.classList.add("modal-open"); // Prevent body scroll
+    }
 }
 
 function closeTermsModal() {
-    document.getElementById('termsModal').style.display = 'none';
+    const termsModal = document.getElementById('termsModal');
+    if (termsModal) {
+        termsModal.style.display = 'none';
+        // Check if another modal (like authModal) is still open before removing class
+        if (document.getElementById('authModal').style.display !== 'flex') {
+            document.body.classList.remove("modal-open");
+        }
+    }
 }
 
 function isMobileDevice() {
@@ -376,11 +379,15 @@ function isMobileDevice() {
 }
 
 function validateDeviceType() {
-    const userType = document.getElementById('signup-user-type').value;
-    const signupButton = document.getElementById('signupButton');
+    const userTypeSelect = document.getElementById('signup-user-type');
+    if (!userTypeSelect) return; // Guard clause
+
+    const userType = userTypeSelect.value;
     const deviceWarning = document.getElementById('device-warning');
+    if (!deviceWarning) return; // Guard clause
+
     const isMobile = isMobileDevice();
-    const isSmallDesktop = window.innerWidth < 600; // Check screen width for small desktops
+    const isSmallDesktop = window.innerWidth < 600;
 
     if (userType === 'For People Without Motor Abilities' && (isMobile || isSmallDesktop)) {
         deviceWarning.style.display = 'block';
@@ -391,11 +398,51 @@ function validateDeviceType() {
     validateTerms();
 }
 
-// Run validation every time an option is clicked, even if it's the same option
 document.addEventListener('DOMContentLoaded', function () {
     const userTypeSelect = document.getElementById('signup-user-type');
     if (userTypeSelect) {
-        userTypeSelect.addEventListener('mousedown', () => setTimeout(validateDeviceType, 0));
+        // Using 'change' event is more standard for select elements
+        userTypeSelect.addEventListener('change', validateDeviceType);
+    }
+
+    const termsCheckbox = document.getElementById('terms-checkbox');
+    if (termsCheckbox) {
+        termsCheckbox.addEventListener('change', validateTerms);
+    }
+
+    const signupPassword = document.getElementById('signup-password');
+    if (signupPassword) {
+        signupPassword.addEventListener('input', validatePasswordRules);
+    }
+
+    const signupConfirmPassword = document.getElementById('signup-confirm-password');
+    if (signupConfirmPassword) {
+        signupConfirmPassword.addEventListener('input', validateConfirmPassword);
+    }
+
+
+    // Initial validation checks on page load for signup form if it's visible by default (though it's not here)
+    // Or, more appropriately, when the signup form is shown.
+    // This is handled by showSignupFields calling validateDeviceType and validateTerms.
+
+    // Check for unsupported device message on page load
+    const unsupported = getParameterByName('unsupported');
+    const fromParaPage = getParameterByName('fromParaPage');
+    const isRedirected = sessionStorage.getItem('unsupportedRedirect');
+
+    if (unsupported === 'true' && fromParaPage === 'true' && isRedirected === 'true') {
+        showAlertModal("This user type is not supported on mobile devices or tablets. Please use a desktop computer.");
+        sessionStorage.removeItem('unsupportedRedirect');
+    }
+
+    // Ensure modal scroll behavior is handled
+    const authModal = document.getElementById('authModal');
+    if (authModal && window.getComputedStyle(authModal).display === 'flex') {
+        document.body.classList.add("modal-open");
+    }
+    const termsModal = document.getElementById('termsModal');
+     if (termsModal && window.getComputedStyle(termsModal).display === 'flex') {
+        document.body.classList.add("modal-open");
     }
 });
 
@@ -403,109 +450,87 @@ document.addEventListener('DOMContentLoaded', function () {
 function validateTerms() {
     const termsCheckbox = document.getElementById('terms-checkbox');
     const signupButton = document.getElementById('signupButton');
-    const password = document.getElementById('signup-password').value;
-    const confirmPassword = document.getElementById('signup-confirm-password').value;
+    const passwordInput = document.getElementById('signup-password');
+    const confirmPasswordInput = document.getElementById('signup-confirm-password');
+
+    if (!termsCheckbox || !signupButton || !passwordInput || !confirmPasswordInput) return; // Guard clause
+
+    const password = passwordInput.value;
+    const confirmPassword = confirmPasswordInput.value;
+
     const rules = {
-        lowercase: { elem: document.getElementById('lowercase-rule'), test: /[a-z]/ },
-        uppercase: { elem: document.getElementById('uppercase-rule'), test: /[A-Z]/ },
-        number: { elem: document.getElementById('number-rule'), test: /[0-9]/ },
-        special: { elem: document.getElementById('special-char-rule'), test: /[^a-zA-Z0-9]/ },
-        length: { elem: document.getElementById('length-rule'), test: (p) => p.length >= 8 }
+        lowercase: /[a-z]/,
+        uppercase: /[A-Z]/,
+        number: /[0-9]/,
+        special: /[^a-zA-Z0-9]/,
+        length: (p) => p.length >= 8
     };
     let isPasswordValid = true;
-    Object.entries(rules).forEach(([key, { elem, test }]) => {
-        if (test instanceof RegExp ? test.test(password) : test(password)) {
-            // Valid
+    Object.values(rules).forEach(test => {
+        if (typeof test === 'function') {
+            if (!test(password)) isPasswordValid = false;
         } else {
-            isPasswordValid = false;
+            if (!test.test(password)) isPasswordValid = false;
         }
     });
 
     if (password !== confirmPassword) {
         isPasswordValid = false;
     }
+
     const deviceWarning = document.getElementById('device-warning');
-    const isDeviceWarningVisible = deviceWarning.style.display === 'block';
+    const isDeviceWarningVisible = deviceWarning && deviceWarning.style.display === 'block';
 
     if (isDeviceWarningVisible) {
         signupButton.disabled = true;
-        signupButton.style.opacity = "0.5"; // Fade out button
-        signupButton.style.cursor = "not-allowed"; // Change cursor to indicate disabled state
+        signupButton.style.opacity = "0.5";
+        signupButton.style.cursor = "not-allowed";
         return;
     }
 
     if (termsCheckbox.checked && password !== '' && confirmPassword !== '' && isPasswordValid) {
         signupButton.disabled = false;
-        signupButton.style.opacity = "1"; // Restore button opacity
-        signupButton.style.cursor = "pointer"; // Restore cursor style
+        signupButton.style.opacity = "1";
+        signupButton.style.cursor = "pointer";
     } else {
         signupButton.disabled = true;
-        signupButton.style.opacity = "0.5"; // Fade out button
-        signupButton.style.cursor = "not-allowed"; // Change cursor to indicate disabled state
+        signupButton.style.opacity = "0.5";
+        signupButton.style.cursor = "not-allowed";
     }
-
 }
+
 function showResetPasswordFields() {
     document.getElementById('login-form').style.display = 'none';
     document.getElementById('signup-form').style.display = 'none';
     document.getElementById('reset-password-form').style.display = 'block';
-    document.getElementById('signupLink').style.display = 'none';
-    document.getElementById('loginLink').style.display = 'none';
+    document.getElementById('signupLink').style.display = 'none'; // Hide signup link
+    document.getElementById('loginLink').style.display = 'none';  // Hide login link (already hidden)
 }
 
 function resetPassword() {
     var email = document.getElementById('reset-email').value;
 
-    firebase.auth().sendPasswordResetEmail(email)
-        .then(() => {
-            // Password reset email sent!
-            // Show a confirmation message to the user
-            showAlertModal('Password reset email sent! Check your inbox.'); // Use your existing alert modal function.
-        })
-        .catch((error) => {
-            var errorCode = error.code;
-            var errorMessage = error.message;
-            showAlertModal(errorMessage); // Use your existing alert modal function
-        });
+    fetch(`${API_BASE_URL}/reset-password`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ email })
+    })
+    .then(response => {
+        if (!response.ok) {
+            return response.json().then(err => { throw new Error(err.error || 'Reset password failed'); });
+        }
+        return response.json();
+    })
+    .then(() => {
+        showAlertModal('Password reset email sent! Check your inbox.');
+    })
+    .catch(error => {
+        showAlertModal(error.message || 'Failed to send password reset email.');
+    });
 }
 
-
-document.addEventListener('DOMContentLoaded', function () {
-    // Function to extract URL parameters
-    function getParameterByName(name, url = window.location.href) {
-        name = name.replace(/[\[\]]/g, '\\$&');
-        var regex = new RegExp('[?&]' + name + '(=([^&#]*)|&|#|$)'),
-            results = regex.exec(url);
-        if (!results) return null;
-        if (!results[2]) return '';
-        return decodeURIComponent(results[2].replace(/\+/g, ' '));
-    }
-
-    // Check for the 'unsupported' and 'fromParaPage' parameters in the URL
-    const unsupported = getParameterByName('unsupported');
-    const fromParaPage = getParameterByName('fromParaPage');
-    const isRedirected = sessionStorage.getItem('unsupportedRedirect');
-
-    if (unsupported === 'true' && fromParaPage === 'true' && isRedirected === 'true') {
-        showAlertModal("This user type is not supported on mobile devices or tablets. Please use a desktop computer.");
-        sessionStorage.removeItem('unsupportedRedirect'); // Clear flag immediately
-    }
-    validateDeviceType(); // Initial validation on page load
-});
-
-
-document.addEventListener("DOMContentLoaded", function () {
-    const modals = document.querySelectorAll(".modal");
-
-    modals.forEach(modal => {
-        modal.addEventListener("show.bs.modal", function () {
-            // Disable scrolling on the main page when modal opens
-            document.body.classList.add("modal-open");
-        });
-
-        modal.addEventListener("hidden.bs.modal", function () {
-            // Enable scrolling again when modal closes
-            document.body.classList.remove("modal-open");
-        });
-    });
-});
+// Ensure that when a modal is opened, body scrolling is disabled.
+// And when all modals are closed, body scrolling is re-enabled.
+// The openModal, closeModal, openTermsModal, closeTermsModal functions now handle this.

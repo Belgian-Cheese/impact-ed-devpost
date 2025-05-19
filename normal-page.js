@@ -1,394 +1,437 @@
-document.addEventListener('DOMContentLoaded', () => {
+// normal-page.js
 
-    // Use onAuthStateChanged to wait for Firebase Auth initialization
-    firebase.auth().onAuthStateChanged((user) => {
-        if (user) {
-            // User is signed in. Now check their Firestore document.
-            console.log("User is signed in, checking type for:", user.email);
-    
-            db.collection('users').doc(user.email).get()
-                .then((doc) => {
-                    // This block executes when the Firestore 'get()' operation successfully completes.
-                    if (doc.exists) {
-                        const userData = doc.data();
-                        const userType = userData.userType;
-                        console.log("User type found in Firestore:", userType); // Log the actual type
-    
-                        // --- Strict Comparison ---
-                        const requiredType = "For People with Motor Abilities";
-    
-                        if (userType !== requiredType) {
-                            console.log(`User type "${userType}" does not match required "${requiredType}". Redirecting.`);
-                            window.location.href = 'index.html';
-                        } else {
-                            console.log("User type is correct. Allowing access.");
-                            // User type is correct, allow the page to load/continue
-                            // Place your logic here to hide loading screens or show the main content
-                            // Example:
-                            // document.getElementById('loading-screen')?.classList.add('hidden');
-                            // document.querySelector('.container')?.style.display = 'flex';
-                        }
-                    } else {
-                        // User is authenticated, but no document found in Firestore
-                        console.log("Firestore document not found for email:", user.email, ". Redirecting.");
-                        window.location.href = 'index.html';
-                    }
-                })
-                .catch((error) => {
-                    // This block executes if there was an error fetching the Firestore document.
-                    console.error("Error getting user document:", error);
-                    // Redirect even if there's an error during the check
-                    window.location.href = 'index.html';
-                });
-    
+// !!! IMPORTANT: Replace this with your actual API base URL !!!
+const API_BASE_URL = 'https://impact-ed-server-213051243033.asia-south2.run.app'; // REPLACE THIS. Example: 'https://us-central1-your-project-id.cloudfunctions.net/api'
+function getParameterByName(name, url = window.location.href) {
+    name = name.replace(/[\[\]]/g, '\\$&');
+    var regex = new RegExp('[?&]' + name + '(=([^&#]*)|&|#|$)'),
+        results = regex.exec(url);
+    if (!results) return null;
+    if (!results[2]) return '';
+    return decodeURIComponent(results[2].replace(/\+/g, ' '));
+}
+document.addEventListener('DOMContentLoaded', () => {
+    currentUserEmail = getParameterByName('email'); // Store the authenticated user's email
+
+    function checkUserType() {
+        // NOTE: This is synchronous (does not use await).
+            fetch(`${API_BASE_URL}/getUserType`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: currentUserEmail }),
+            })
+            .then(response => {
+            if (!response.ok) {
+                window.location.href = 'index.html';
+                throw new Error(`HTTP error! Status: ${response.status}`);
+                
+            }
+            return response.json();
+            })
+            .then(data => {
+                userData.mentalDisorder = data.userType || "Perfectly Fine"; //set mentalDisorder.
+                if (data.userType !== 'For People with Motor Abilities') {
+                window.location.href = 'index.html'; // Redirect if not authorized
+                }
+            })
+            .catch(error => {
+            console.error("Error fetching or processing user type:", error);
+            });
+        initializeApp();
+        hideLoadingScreenAndShowContent();
+      }
+      
+    checkUserType();
+
+    function hideLoadingScreenAndShowContent() {
+        const loadingScreen = document.getElementById('loading-screen');
+        const mainContainer = document.querySelector('.container');
+
+        if (loadingScreen) {
+            loadingScreen.classList.add('hidden');
+            console.log("Loading screen hidden.");
         } else {
-            // User is signed out
-            console.log("No user signed in. Redirecting.");
-            window.location.href = 'index.html';
+            console.warn("Loading screen element not found.");
+        }
+
+        if (mainContainer) {
+            // The .container class in your CSS has "display: flex;"
+            mainContainer.style.display = 'flex';
+            console.log("Main content container shown.");
+        } else {
+            console.warn("Main container element not found.");
+        }
+    }
+
+    const menu = document.querySelector('.menu');
+    const menuItems = Array.from(menu.querySelectorAll('.menu-item'));
+    const logoutButton = document.getElementById('logout-button');
+    const contentSections = document.querySelectorAll('main.content > section');
+    let currentToolbarItem = 0;
+
+    menuItems[currentToolbarItem].classList.add('active');
+    contentSections[currentToolbarItem].style.display = 'block';
+
+    // --- ABORT CONTROLLER VARIABLES ---
+    let currentChapterFetchAbortController = null;
+    let currentAudioFetchAbortController = null;
+    let currentQuizFetchAbortController = null;
+
+    async function initializeApp() {
+
+        //  currentUserEmail = user.email;
+        await fetchInitialUserData();      // Loads user data and sets up state
+
+        checkAndShowPlacementTest();
+        fetchAndDisplayUserNameUI();
+        applyDarkModePreference();
+        calculateTotalTime();
+        startSession();
+    }
+
+    
+
+
+    function setActiveItem(index) {
+        menuItems[currentToolbarItem].classList.remove('active');
+        contentSections[currentToolbarItem].style.display = "none";
+        currentToolbarItem = index;
+        menuItems[currentToolbarItem].classList.add('active');
+        contentSections[currentToolbarItem].style.display = "block";
+        menu.scrollTo({
+            top: menuItems[currentToolbarItem].offsetTop - menu.offsetTop,
+            behavior: 'smooth'
+        });
+    }
+
+    menuItems.forEach((item, index) => {
+        item.addEventListener("click", () => {
+            setActiveItem(index);
+            window.scrollTo({ top: 0, behavior: "smooth" });
+        });
+        item.addEventListener('focus', () => {
+            setActiveItem(index);
+            window.scrollTo({ top: 0, behavior: "smooth" });
+        });
+    });
+
+    function animateProgressBars() {
+        const progressBars = document.querySelectorAll('.progress-bar-inner');
+        progressBars.forEach(bar => {
+            const targetWidth = bar.style.width;
+            bar.style.width = '0%';
+            setTimeout(() => {
+                bar.style.width = targetWidth;
+            }, 1000);
+        });
+    }
+    animateProgressBars();
+
+    const toolbarContainer = document.querySelector('.toolbar-container');
+    toolbarContainer.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        toolbarContainer.scrollTop += e.deltaY;
+    });
+
+    const darkModeToggle = document.getElementById('dark-mode-toggle');
+    const body = document.body;
+
+    function enableDarkMode() {
+        body.classList.add('dark-mode');
+        document.querySelectorAll('.toolbar').forEach(el => el.classList.add('dark-mode'));
+        document.querySelectorAll('.logo').forEach(el => el.classList.add('dark-mode'));
+        document.querySelectorAll('.icon').forEach(el => el.classList.add('dark-mode'));
+        document.querySelectorAll('.logo-container').forEach(el => el.classList.add('dark-mode'));
+        document.querySelectorAll('.welcome-banner').forEach(el => el.classList.add('dark-mode'));
+        document.querySelectorAll('.card').forEach(el => el.classList.add('dark-mode'));
+        document.querySelectorAll('.progress-bar').forEach(el => el.classList.add('dark-mode'));
+        document.querySelectorAll('.circle-progress').forEach(el => el.classList.add('dark-mode'));
+        document.querySelectorAll('#user-level-container').forEach(el => el.classList.add('dark-mode'));
+        document.querySelectorAll('#study .study-menu-item').forEach(el => el.classList.add('dark-mode'));
+        document.querySelectorAll('.chapter-button').forEach(el => el.classList.add('dark-mode'));
+        document.querySelectorAll('#study .chapter-content-container').forEach(el => el.classList.add('dark-mode'));
+        document.querySelectorAll('.back-button').forEach(el => el.classList.add('dark-mode'));
+        document.querySelectorAll('.chat-box').forEach(el => el.classList.add('dark-mode'));
+        document.querySelectorAll('#study .content-text').forEach(el => el.classList.add('dark-mode'));
+        document.querySelectorAll('.chapter-button').forEach(el => el.classList.add('dark-mode'));
+        document.querySelectorAll('.ai-message').forEach(el => el.classList.add('dark-mode'));
+        document.querySelectorAll('.subject-progress .percentage').forEach(el => el.classList.add('dark-mode'));
+        document.querySelectorAll('.pace-display').forEach(el => el.classList.add('dark-mode'));
+        document.querySelectorAll('.subject-time .time-spent').forEach(el => el.classList.add('dark-mode'));
+        document.querySelectorAll('.chapter-button-content p').forEach(el => el.classList.add('dark-mode'));
+        document.querySelectorAll('.#profile p').forEach(el => el.classList.add('dark-mode'));
+        document.querySelectorAll('.menu-item:hover').forEach(el => el.classList.add('dark-mode'));
+        document.querySelectorAll('.ai-message').forEach(el => el.classList.add('dark-mode'));
+        document.querySelectorAll('#study h2').forEach(el => el.classList.add('dark-mode'));
+    
+        //New addition
+        const quizElements = document.querySelectorAll('.quiz-question, .quiz-options li, .quiz-option label, .quiz-feedback, #quiz-submit-button');
+        quizElements.forEach(el => el.classList.add('dark-mode'));
+         document.querySelectorAll('.quiz-question').forEach(el => el.classList.add('dark-mode'));
+                document.querySelectorAll('.quiz-options li').forEach(el => el.classList.add('dark-mode'));
+                document.querySelectorAll('.quiz-option label').forEach(el => el.classList.add('dark-mode'));
+                document.querySelectorAll('.quiz-feedback').forEach(el => el.classList.add('dark-mode'));
+                document.querySelectorAll('#quiz-submit-button').forEach(el => el.classList.add('dark-mode'));
+               document.querySelectorAll('.subject-progress .progress-bar-inner').forEach(el => el.classList.add('dark-mode'));
+                document.querySelectorAll('.progress-bar-inner').forEach(el => el.classList.add('dark-mode'));
+        
+        updateDarkModePreference(true);
+    
+    
+    }
+    
+    function disableDarkMode() {
+        body.classList.remove('dark-mode');
+        document.querySelectorAll('.toolbar').forEach(el => el.classList.remove('dark-mode'));
+        document.querySelectorAll('.logo').forEach(el => el.classList.remove('dark-mode'));
+        document.querySelectorAll('.icon').forEach(el => el.classList.remove('dark-mode'));
+        document.querySelectorAll('.welcome-banner').forEach(el => el.classList.remove('dark-mode'));
+        document.querySelectorAll('.card').forEach(el => el.classList.remove('dark-mode'));
+        document.querySelectorAll('.progress-bar').forEach(el => el.classList.remove('dark-mode'));
+        document.querySelectorAll('.logo-container').forEach(el => el.classList.remove('dark-mode'));
+        document.querySelectorAll('#user-level-container').forEach(el => el.classList.remove('dark-mode'));
+        document.querySelectorAll('.circle-progress').forEach(el => el.classList.remove('dark-mode'));
+        document.querySelectorAll('#study .study-menu-item').forEach(el => el.classList.remove('dark-mode'));
+        document.querySelectorAll('.chapter-button').forEach(el => el.classList.remove('dark-mode'));
+        document.querySelectorAll('#study .chapter-content-container').forEach(el => el.classList.remove('dark-mode'));
+        document.querySelectorAll('.back-button').forEach(el => el.classList.remove('dark-mode'));
+        document.querySelectorAll('.chat-box').forEach(el => el.classList.remove('dark-mode'));
+        document.querySelectorAll('#study .content-text').forEach(el => el.classList.remove('dark-mode'));
+        document.querySelectorAll('.chapter-button').forEach(el => el.classList.remove('dark-mode'));
+        document.querySelectorAll('.ai-message').forEach(el => el.classList.remove('dark-mode'));
+        document.querySelectorAll('.subject-progress .percentage').forEach(el => el.classList.remove('dark-mode'));
+        document.querySelectorAll('.pace-display').forEach(el => el.classList.remove('dark-mode'));
+        document.querySelectorAll('.subject-time .time-spent').forEach(el => el.classList.remove('dark-mode'));
+        document.querySelectorAll('.chapter-button-content p').forEach(el => el.classList.remove('dark-mode'));
+        document.querySelectorAll('.#profile p').forEach(el => el.classList.remove('dark-mode'));
+        document.querySelectorAll('.menu-item:hover').forEach(el => el.classList.remove('dark-mode'));
+        document.querySelectorAll('.ai-message').forEach(el => el.classList.remove('dark-mode'));
+    
+        //New addition
+        const quizElements = document.querySelectorAll('.quiz-question, .quiz-options li, .quiz-option label, .quiz-feedback, #quiz-submit-button');
+         quizElements.forEach(el => el.classList.remove('dark-mode'));
+          document.querySelectorAll('.quiz-question').forEach(el => el.classList.remove('dark-mode'));
+                document.querySelectorAll('.quiz-options li').forEach(el => el.classList.remove('dark-mode'));
+                document.querySelectorAll('.quiz-option label').forEach(el => el.classList.remove('dark-mode'));
+                document.querySelectorAll('.quiz-feedback').forEach(el => el.classList.remove('dark-mode'));
+                document.querySelectorAll('#quiz-submit-button').forEach(el => el.classList.remove('dark-mode'));
+               document.querySelectorAll('.subject-progress .progress-bar-inner').forEach(el => el.classList.remove('dark-mode'));
+               document.querySelectorAll('.progress-bar-inner').forEach(el => el.classList.remove('dark-mode'));
+    
+        updateDarkModePreference(false);
+    }
+
+    async function updateDarkModePreferenceOnServer(isDarkMode) {
+        if (!currentUserEmail) return;
+        try {
+            await fetch(`${API_BASE_URL}/updateDarkModePreference`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: currentUserEmail, isDarkMode: isDarkMode })
+            });
+        } catch (error) {
+            console.error("Error updating dark mode preference on server:", error);
+        }
+    }
+
+    darkModeToggle.addEventListener('change', () => {
+        if (darkModeToggle.checked) {
+            enableDarkMode();
+            updateDarkModePreferenceOnServer(true);
+        } else {
+            disableDarkMode();
+            updateDarkModePreferenceOnServer(false);
         }
     });
-    
-    // IMPORTANT: Do NOT define or call a separate checkUserTypeAndRedirect() function.
-    // The entire logic is now handled within the onAuthStateChanged listener callback.
-        
-        const menu = document.querySelector('.menu');
-        const menuItems = Array.from(menu.querySelectorAll('.menu-item'));
-        const logoutButton = document.getElementById('logout-button');
-        const contentSections = document.querySelectorAll('main.content > section');
-        let currentToolbarItem = 0;
-      
-        menuItems[currentToolbarItem].classList.add('active');
-        contentSections[currentToolbarItem].style.display = 'block';
-    
-    
-      // --- ABORT CONTROLLER VARIABLES ---
-      let currentChapterFetchAbortController = null; // To manage ongoing chapter fetch requests
-      let currentAudioFetchAbortController = null; // To manage ongoing audio fetch requests
-      let currentQuizFetchAbortController = null; // To manage ongoing quiz fetch requests // <<< ADDED
-      // --- END ABORT CONTROLLER VARIABLES ---
-    
-    
-        // Modify the main auth check:
-        (async function() {
-            const user = await waitForFirebase();
-            if (!user) {
-                window.location.href = 'index.html';
-                return; // Stop further execution if redirected
-            } else {
-                 // The initial check is now done in the onAuthStateChanged listener above.
-                 // You can remove or adjust this part if the onAuthStateChanged check is sufficient.
-                // await checkUserTypeAndRedirect(); // Potentially redundant if handled by listener
-                await fetchUserLevel();
-                // ... existing code ...
-                checkAndShowPlacementTest(user);
-                 // Fetch user data and initialize display after auth check
-                 fetchAndDisplayUserName();
-                 fetchDarkModePreference();
-                 calculateTotalTime();
-                 startSession(); // Start session tracking
+
+    // This function will be called after fetchInitialUserData
+    function applyDarkModePreference() {
+        // userData.darkMode is populated by fetchInitialUserData
+        if (userData && userData.darkMode) {
+            darkModeToggle.checked = true;
+            enableDarkMode();
+        } else {
+            darkModeToggle.checked = false;
+            disableDarkMode();
+        }
+    }
+
+
+    // Global state for user data fetched from server
+    let userData = {
+        name: '',
+        email: '',
+        language: 'English', // Default
+        testCategory: 'beginner', // Default (userLevel)
+        hasTakenTest: false,
+        progress: {}, // completedChapters
+        totaltimespent: 0,
+        totalPoints: 0,
+        subjectTime: {},
+        darkMode: false,
+        mentalDisorder: 'Perfectly Fine'
+    };
+    let userLevel = 'beginner'; // Will be updated by fetchInitialUserData
+
+    async function fetchInitialUserData() {
+        if (!currentUserEmail) {
+            console.error("Cannot fetch initial user data, user not authenticated.");
+            return;
+        }
+        try {
+            const response = await fetch(`${API_BASE_URL}/fetchUserData`, { // NEW SERVER ENDPOINT
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: currentUserEmail })
+            });
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.error || `Failed to fetch user data: ${response.status}`);
             }
-        })();
-      
-        function setActiveItem(index) {
-            menuItems[currentToolbarItem].classList.remove('active');
-            contentSections[currentToolbarItem].style.display = "none";
-            currentToolbarItem = index;
-            menuItems[currentToolbarItem].classList.add('active');
-            contentSections[currentToolbarItem].style.display = "block";
-            menu.scrollTo({
-                top: menuItems[currentToolbarItem].offsetTop - menu.offsetTop,
-                behavior: 'smooth'
-            });
+            const fetchedData = await response.json();
+
+            // Update global userData object
+            userData.name = fetchedData.name || 'User';
+            userData.email = fetchedData.email || currentUserEmail;
+            userData.language = fetchedData.language || 'English';
+            userData.testCategory = (fetchedData.testCategory || 'beginner').toLowerCase();
+            userData.hasTakenTest = fetchedData.hasTakenTest || false;
+            userData.progress = fetchedData.progress || {};
+            userData.totaltimespent = fetchedData.totaltimespent || 0;
+            userData.totalPoints = fetchedData.totalPoints || 0;
+            userData.subjectTime = fetchedData.subjectTime || {};
+            userData.darkMode = fetchedData.darkMode || false;
+            userData.mentalDisorder = fetchedData.mentalDisorder || 'Perfectly Fine';
+
+
+            // Update specific global variables that are widely used
+            userLevel = userData.testCategory;
+            userLanguage = userData.language; // Assuming userLanguage is a global var from i18n setup
+            completedChapters = userData.progress;
+            totalTimeSpent = userData.totaltimespent;
+            totalPoints = userData.totalPoints;
+            subjectTime = userData.subjectTime;
+
+
+            localStorage.setItem('userLevel', userLevel); // Keep this for convenience if other scripts use it
+
+            console.log("Initial user data fetched and processed:", userData);
+            translatePage(); // Translate after language is known
+
+        } catch (error) {
+            console.error("Error fetching initial user data from server:", error);
+            // Handle critical error, maybe redirect or show error message
         }
-      
-        menuItems.forEach((item, index) => {
-            item.addEventListener("click", () => {
-                setActiveItem(index);
-        
-                // Scroll to the top smoothly when any toolbar button is clicked
-                window.scrollTo({
-                    top: 0,
-                    behavior: "smooth"
-                });
-            });
-        
-            item.addEventListener('focus', () => {
-                setActiveItem(index);
-        
-                // Scroll to the top smoothly when focused
-                window.scrollTo({
-                    top: 0,
-                    behavior: "smooth"
-                });
-            });
-        });
-        
-      
-    
-      
-        function animateProgressBars() {
-            const progressBars = document.querySelectorAll('.progress-bar-inner');
-            progressBars.forEach(bar => {
-                const targetWidth = bar.style.width;
-                bar.style.width = '0%';
-                setTimeout(() => {
-                    bar.style.width = targetWidth;
-                }, 1000);
-            });
-        }
-        animateProgressBars();
-    
-        const toolbarContainer = document.querySelector('.toolbar-container'); // Get the toolbar container
-    
-        // Prevent scrolling of the main content when the mouse is over the toolbar.
-        toolbarContainer.addEventListener('wheel', (e) => {
-            e.preventDefault();
-            // Optionally, allow the toolbar itself to scroll if it has overflow:
-            toolbarContainer.scrollTop += e.deltaY;
-        });
-      
-        const darkModeToggle = document.getElementById('dark-mode-toggle');
-        const body = document.body;
-      
-        function enableDarkMode() {
-            body.classList.add('dark-mode');
-            document.querySelectorAll('.toolbar').forEach(el => el.classList.add('dark-mode'));
-            document.querySelectorAll('.logo').forEach(el => el.classList.add('dark-mode'));
-            document.querySelectorAll('.icon').forEach(el => el.classList.add('dark-mode'));
-            document.querySelectorAll('.logo-container').forEach(el => el.classList.add('dark-mode'));
-            document.querySelectorAll('.welcome-banner').forEach(el => el.classList.add('dark-mode'));
-            document.querySelectorAll('.card').forEach(el => el.classList.add('dark-mode'));
-            document.querySelectorAll('.progress-bar').forEach(el => el.classList.add('dark-mode'));
-            document.querySelectorAll('.circle-progress').forEach(el => el.classList.add('dark-mode'));
-            document.querySelectorAll('#user-level-container').forEach(el => el.classList.add('dark-mode'));
-            document.querySelectorAll('#study .study-menu-item').forEach(el => el.classList.add('dark-mode'));
-            document.querySelectorAll('.chapter-button').forEach(el => el.classList.add('dark-mode'));
-            document.querySelectorAll('#study .chapter-content-container').forEach(el => el.classList.add('dark-mode'));
-            document.querySelectorAll('.back-button').forEach(el => el.classList.add('dark-mode'));
-            document.querySelectorAll('.chat-box').forEach(el => el.classList.add('dark-mode'));
-            document.querySelectorAll('#study .content-text').forEach(el => el.classList.add('dark-mode'));
-            document.querySelectorAll('.chapter-button').forEach(el => el.classList.add('dark-mode'));
-            document.querySelectorAll('.ai-message').forEach(el => el.classList.add('dark-mode'));
-            document.querySelectorAll('.subject-progress .percentage').forEach(el => el.classList.add('dark-mode'));
-            document.querySelectorAll('.pace-display').forEach(el => el.classList.add('dark-mode'));
-            document.querySelectorAll('.subject-time .time-spent').forEach(el => el.classList.add('dark-mode'));
-            document.querySelectorAll('.chapter-button-content p').forEach(el => el.classList.add('dark-mode'));
-            document.querySelectorAll('.#profile p').forEach(el => el.classList.add('dark-mode'));
-            document.querySelectorAll('.menu-item:hover').forEach(el => el.classList.add('dark-mode'));
-            document.querySelectorAll('.ai-message').forEach(el => el.classList.add('dark-mode'));
-            document.querySelectorAll('#study h2').forEach(el => el.classList.add('dark-mode'));
-        
-            //New addition
-            const quizElements = document.querySelectorAll('.quiz-question, .quiz-options li, .quiz-option label, .quiz-feedback, #quiz-submit-button');
-            quizElements.forEach(el => el.classList.add('dark-mode'));
-             document.querySelectorAll('.quiz-question').forEach(el => el.classList.add('dark-mode'));
-                    document.querySelectorAll('.quiz-options li').forEach(el => el.classList.add('dark-mode'));
-                    document.querySelectorAll('.quiz-option label').forEach(el => el.classList.add('dark-mode'));
-                    document.querySelectorAll('.quiz-feedback').forEach(el => el.classList.add('dark-mode'));
-                    document.querySelectorAll('#quiz-submit-button').forEach(el => el.classList.add('dark-mode'));
-                   document.querySelectorAll('.subject-progress .progress-bar-inner').forEach(el => el.classList.add('dark-mode'));
-                    document.querySelectorAll('.progress-bar-inner').forEach(el => el.classList.add('dark-mode'));
-            
-            updateDarkModePreference(true);
-        
-        
-        }
-        
-        function disableDarkMode() {
-            body.classList.remove('dark-mode');
-            document.querySelectorAll('.toolbar').forEach(el => el.classList.remove('dark-mode'));
-            document.querySelectorAll('.logo').forEach(el => el.classList.remove('dark-mode'));
-            document.querySelectorAll('.icon').forEach(el => el.classList.remove('dark-mode'));
-            document.querySelectorAll('.welcome-banner').forEach(el => el.classList.remove('dark-mode'));
-            document.querySelectorAll('.card').forEach(el => el.classList.remove('dark-mode'));
-            document.querySelectorAll('.progress-bar').forEach(el => el.classList.remove('dark-mode'));
-            document.querySelectorAll('.logo-container').forEach(el => el.classList.remove('dark-mode'));
-            document.querySelectorAll('#user-level-container').forEach(el => el.classList.remove('dark-mode'));
-            document.querySelectorAll('.circle-progress').forEach(el => el.classList.remove('dark-mode'));
-            document.querySelectorAll('#study .study-menu-item').forEach(el => el.classList.remove('dark-mode'));
-            document.querySelectorAll('.chapter-button').forEach(el => el.classList.remove('dark-mode'));
-            document.querySelectorAll('#study .chapter-content-container').forEach(el => el.classList.remove('dark-mode'));
-            document.querySelectorAll('.back-button').forEach(el => el.classList.remove('dark-mode'));
-            document.querySelectorAll('.chat-box').forEach(el => el.classList.remove('dark-mode'));
-            document.querySelectorAll('#study .content-text').forEach(el => el.classList.remove('dark-mode'));
-            document.querySelectorAll('.chapter-button').forEach(el => el.classList.remove('dark-mode'));
-            document.querySelectorAll('.ai-message').forEach(el => el.classList.remove('dark-mode'));
-            document.querySelectorAll('.subject-progress .percentage').forEach(el => el.classList.remove('dark-mode'));
-            document.querySelectorAll('.pace-display').forEach(el => el.classList.remove('dark-mode'));
-            document.querySelectorAll('.subject-time .time-spent').forEach(el => el.classList.remove('dark-mode'));
-            document.querySelectorAll('.chapter-button-content p').forEach(el => el.classList.remove('dark-mode'));
-            document.querySelectorAll('.#profile p').forEach(el => el.classList.remove('dark-mode'));
-            document.querySelectorAll('.menu-item:hover').forEach(el => el.classList.remove('dark-mode'));
-            document.querySelectorAll('.ai-message').forEach(el => el.classList.remove('dark-mode'));
-        
-            //New addition
-            const quizElements = document.querySelectorAll('.quiz-question, .quiz-options li, .quiz-option label, .quiz-feedback, #quiz-submit-button');
-             quizElements.forEach(el => el.classList.remove('dark-mode'));
-              document.querySelectorAll('.quiz-question').forEach(el => el.classList.remove('dark-mode'));
-                    document.querySelectorAll('.quiz-options li').forEach(el => el.classList.remove('dark-mode'));
-                    document.querySelectorAll('.quiz-option label').forEach(el => el.classList.remove('dark-mode'));
-                    document.querySelectorAll('.quiz-feedback').forEach(el => el.classList.remove('dark-mode'));
-                    document.querySelectorAll('#quiz-submit-button').forEach(el => el.classList.remove('dark-mode'));
-                   document.querySelectorAll('.subject-progress .progress-bar-inner').forEach(el => el.classList.remove('dark-mode'));
-                   document.querySelectorAll('.progress-bar-inner').forEach(el => el.classList.remove('dark-mode'));
-        
-            updateDarkModePreference(false);
-        }
-      
-       async function updateDarkModePreference(isDarkMode) {
-           try {
-                const user = firebase.auth().currentUser;
-               if (user) {
-                   await db.collection('users').doc(user.email).update({
-                        darkMode: isDarkMode,
-                    });
-               }
-          } catch (error) {
-                console.error("Error updating dark mode preference in Firestore:", error);
-            }
-        }
-      
-        darkModeToggle.addEventListener('change', () => {
-            if (darkModeToggle.checked) {
-                enableDarkMode();
-            } else {
-                disableDarkMode();
-            }
-        });
-      
-       async function fetchDarkModePreference() {
-            try {
-                const user = firebase.auth().currentUser;
-               if (user) {
-                     const doc = await db.collection('users').doc(user.email).get();
-                    if (doc.exists && doc.data().darkMode) {
-                        darkModeToggle.checked = doc.data().darkMode;
-                          if(doc.data().darkMode)
-                            enableDarkMode();
-                        else
-                            disableDarkMode()
-                   }
-               }
-           } catch (error) {
-                console.error("Error fetching dark mode preference from Firestore:", error);
-           }
-        }
-      
-        // Add after Firebase initialization
-      async function checkAndShowPlacementTest(user) {
-        const doc = await db.collection('users').doc(user.email).get();
-        if (!doc.exists || !doc.data().hasTakenTest) {
+        startSession();
+    }
+
+
+    function checkAndShowPlacementTest() {
+        // Uses userData.hasTakenTest and userData.testCategory populated by fetchInitialUserData
+        if (!userData.hasTakenTest) {
             showPlacementTest();
         }
-      }
-      
-      function showPlacementTest() {
+        // Update UI for user level
+        const levelText = document.getElementById('user-level-text');
+        if (levelText) {
+            levelText.textContent = `${i18n[userLanguage]?.['level'] || 'Level'}: ${userLevel.charAt(0).toUpperCase() + userLevel.slice(1)}`;
+        }
+    }
+
+    function showPlacementTest() {
         const modal = document.getElementById('placementTestModal');
         modal.style.display = 'block';
-        translatePage(); // Ensure test uses current language
-      }
-      
-      // Add form submission handler
-      document.getElementById('placementTestForm').addEventListener('submit', async (e) => {
+        translatePage();
+    }
+
+    document.getElementById('placementTestForm').addEventListener('submit', async (e) => {
         e.preventDefault();
-        
-        const formData = {
-            q1: document.querySelector('input[name="q1"]:checked')?.value,
-            q2: document.querySelector('input[name="q2"]:checked')?.value,
-            q3: document.querySelector('input[name="q3"]:checked')?.value,
-            q4: document.querySelector('input[name="q4"]:checked')?.value,
-            q5: document.querySelector('input[name="q5"]:checked')?.value,
-            q6: document.querySelector('input[name="q6"]:checked')?.value,
-            q7: document.querySelector('input[name="q7"]:checked')?.value,
-            q8: document.querySelector('input[name="q8"]:checked')?.value,
-            q9: document.querySelector('input[name="q9"]:checked')?.value,
-            q10: document.querySelector('input[name="q10"]:checked')?.value,
-            q11: document.querySelector('input[name="q11"]:checked')?.value,
-            q12: document.querySelector('input[name="q12"]:checked')?.value,
-            q13: document.querySelector('input[name="q13"]:checked')?.value,
-            q14: document.querySelector('input[name="q14"]:checked')?.value,
-            q15: document.querySelector('input[name="q15"]:checked')?.value,
-            q16: document.querySelector('input[name="q16"]:checked')?.value,
-            q17: document.querySelector('input[name="q17"]:checked')?.value,
-            q18: document.querySelector('input[name="q18"]:checked')?.value,
-            userId: firebase.auth().currentUser.uid
+        if (!currentUserEmail) return;
+
+        const formAnswers = {
+            q1: document.querySelector('input[name="q1"]:checked')?.value, q2: document.querySelector('input[name="q2"]:checked')?.value,
+            q3: document.querySelector('input[name="q3"]:checked')?.value, q4: document.querySelector('input[name="q4"]:checked')?.value,
+            q5: document.querySelector('input[name="q5"]:checked')?.value, q6: document.querySelector('input[name="q6"]:checked')?.value,
+            q7: document.querySelector('input[name="q7"]:checked')?.value, q8: document.querySelector('input[name="q8"]:checked')?.value,
+            q9: document.querySelector('input[name="q9"]:checked')?.value, q10: document.querySelector('input[name="q10"]:checked')?.value,
+            q11: document.querySelector('input[name="q11"]:checked')?.value, q12: document.querySelector('input[name="q12"]:checked')?.value,
+            q13: document.querySelector('input[name="q13"]:checked')?.value, q14: document.querySelector('input[name="q14"]:checked')?.value,
+            q15: document.querySelector('input[name="q15"]:checked')?.value, q16: document.querySelector('input[name="q16"]:checked')?.value,
+            q17: document.querySelector('input[name="q17"]:checked')?.value, q18: document.querySelector('input[name="q18"]:checked')?.value,
+            // userId: firebase.auth().currentUser.uid // Not needed if server uses email
         };
-      
+
         try {
-            // Send to server
-            const response = await fetch('https://test-eval-api-213051243033.asia-south2.run.app/evaluate-test', {
+            // 1. Send to external evaluation API
+            const evalResponse = await fetch('https://test-eval-api-213051243033.asia-south2.run.app/evaluate-test', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(formData)
+                body: JSON.stringify({ ...formAnswers, userId: currentUserEmail }) // eval API might still need UID
             });
-      
-            if (response.ok) {
-                const data = await response.json();
-    
-                // Update Firestore with hasTakenTest and category
-                 if (data && data.category) {
-                     await db.collection('users').doc(firebase.auth().currentUser.email).update({
-                       hasTakenTest: true,
-                        testCategory: data.category
-                     });
-                      userLevel = data.category; // Update userLevel
-                    localStorage.setItem('userLevel', userLevel);
-    
-                    const levelText = document.getElementById('user-level-text');
-                    if (levelText) {
-                            levelText.textContent = `${i18n[userLanguage]['level']}: 
-                               ${userLevel.charAt(0).toUpperCase() + userLevel.slice(1)}`;
-                    }
-    
-                     document.getElementById('placementTestModal').style.display = 'none';
-    
-                  } else {
-                    await db.collection('users').doc(firebase.auth().currentUser.email).update({
-                         hasTakenTest: true,
-                      });
-                    document.getElementById('placementTestModal').style.display = 'none';
-                  }
-    
+
+            if (!evalResponse.ok) throw new Error('Test evaluation failed');
+            const evalData = await evalResponse.json();
+            const determinedCategory = (evalData && evalData.category) ? evalData.category.toLowerCase() : userLevel; // Fallback to current userLevel
+
+            // 2. Update our server with the test results
+            const serverUpdateResponse = await fetch(`${API_BASE_URL}/submitPlacementTest`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    email: currentUserEmail,
+                    testCategory: determinedCategory,
+                    hasTakenTest: true
+                })
+            });
+
+            if (!serverUpdateResponse.ok) throw new Error('Failed to update test status on server');
+
+            userLevel = determinedCategory;
+            localStorage.setItem('userLevel', userLevel);
+
+            const levelText = document.getElementById('user-level-text');
+            if (levelText) {
+                levelText.textContent = `${i18n[userLanguage]?.['level'] || 'Level'}: ${userLevel.charAt(0).toUpperCase() + userLevel.slice(1)}`;
             }
+            document.getElementById('placementTestModal').style.display = 'none';
+
         } catch (error) {
-            console.error('Test submission failed:', error);
+            console.error('Test submission process failed:', error);
         }
-      });
-      
-      
-        const studySection = document.getElementById('study');
-        const studyMenu = studySection.querySelector('.study-menu');
-        const studyContent = studySection.querySelector('.study-content');
-        const chaptersContainer = studySection.querySelector('.chapters-container');
-        const backButton = studySection.querySelector('.back-button');
-        const chapterContentContainer = studySection.querySelector('.chapter-content-container');
-        const contentTitle = studySection.querySelector('.chapter-title');
-        const contentText = studySection.querySelector('.content-text');
-        const loadingIndicator = studySection.querySelector('.loading-indicator');
-        const errorMessage = studySection.querySelector('.error-message');
-        const errorText = studySection.querySelector('.error-text');
-         const backButtonContainer = studySection.querySelector('.back-button-container');
-      
-        const progressCard = document.querySelector('#home .course-progress-card');
-        const pointsCard = document.querySelector('#home .last-chapter-card'); // Reusing the HTML card for points
-        const totalTimeCard = document.getElementById('total-time-card');
-        const welcomeMessage = document.getElementById('welcome-message');
-        const profileDetails = document.getElementById('profile-details');
-        const subjectTimeCard = document.getElementById('subject-time-card')
-      
-        let completedChapters = {};
-        let totalPoints = 0;
-        let totalTimeSpent = 0;
-        let startTime = 0;
-        let sessionStartTime = null;
-        let userLanguage = 'English';
-         let subjectTime = {};
-         let chapterIntervalId = null; // Store the interval ID
-          let currentChapterSubjectId = null; //Store current subject id of chapter
-      
-      
-          const subjects = [
-            {
+    });
+
+
+    const studySection = document.getElementById('study');
+    const studyMenu = studySection.querySelector('.study-menu');
+    const studyContent = studySection.querySelector('.study-content');
+    const chaptersContainer = studySection.querySelector('.chapters-container');
+    const backButton = studySection.querySelector('.back-button');
+    const chapterContentContainer = studySection.querySelector('.chapter-content-container');
+    const contentTitle = studySection.querySelector('.chapter-title');
+    const contentText = studySection.querySelector('.content-text');
+    const loadingIndicator = studySection.querySelector('.loading-indicator');
+    const errorMessage = studySection.querySelector('.error-message');
+    const errorText = studySection.querySelector('.error-text');
+    const backButtonContainer = studySection.querySelector('.back-button-container');
+
+    const progressCard = document.querySelector('#home .course-progress-card');
+    const pointsCard = document.querySelector('#home .last-chapter-card');
+    const totalTimeCard = document.getElementById('total-time-card');
+    const welcomeMessage = document.getElementById('welcome-message');
+    const profileDetails = document.getElementById('profile-details');
+    const subjectTimeCard = document.getElementById('subject-time-card');
+
+    let completedChapters = {}; // Populated by fetchInitialUserData
+    let totalPoints = 0;       // Populated by fetchInitialUserData
+    let totalTimeSpent = 0;    // Populated by fetchInitialUserData
+    let sessionStartTime = null;
+    let userLanguage = 'English'; // Populated by fetchInitialUserData
+    let subjectTime = {};      // Populated by fetchInitialUserData
+    let chapterIntervalId = null;
+    let currentChapterSubjectId = null;
+
+    const subjects = [ /* ... Your subjects array remains unchanged ... */
+        {
               "id": "physics",
               "name": "Physics",
               "icon": "⚛️",
@@ -689,141 +732,37 @@ document.addEventListener('DOMContentLoaded', () => {
                 ]
               }
             }
-          ];
-      
-    let userLevel = null; // Default level
-    
-    
-    async function fetchUserLevel() {
-        try {
-           const user = firebase.auth().currentUser;
-            if (user) {
-                const doc = await db.collection('users').doc(user.email).get();
-                if (doc.exists) {
-                    userLevel = (doc.data().testCategory || 'beginner').toLowerCase();
-                   localStorage.setItem('userLevel', userLevel); //Store in local storage as well
-                   // Update user level on page load
-    
-                 const levelText = document.getElementById('user-level-text');
-                   if(levelText){
-                     levelText.textContent = i18n[userLanguage]['level'] +`: ${userLevel.charAt(0).toUpperCase() + userLevel.slice(1)}`;
-                   }
-                }
-           }
-        } catch (error) {
-            console.error("Error fetching user level:", error);
+    ];
+
+
+    // Called by the main IIFE after fetchInitialUserData
+    function fetchAndDisplayUserNameUI() {
+        // Uses global `userData` which is populated by `fetchInitialUserData`
+        if (welcomeMessage && userData.name) {
+            welcomeMessage.innerHTML = `<span data-i18n="welcomeBack">Welcome back,</span> ${userData.name}!`;
         }
-    }
-    
-    // Function to get the correct chapter key (including user level)
-    function getChapterKey(chapterName) {
-        return `${userLevel}/${chapterName}`;
-    }
-    
-    function calculateSubjectProgress(subjectId, currentCompletedChapters) {
-        const subject = subjects.find(s => s.id === subjectId);
-        if (!subject) return 0;
-    
-        const levelChapters = subject.chapters[userLevel];
-        if (!levelChapters) return 0;
-    
-        const completedCount = Object.keys(currentCompletedChapters)
-            .filter(key => {
-                // Safe split: find first two colons
-                const firstColon = key.indexOf(':');
-                const secondColon = key.indexOf(':', firstColon + 1);
-                if (firstColon === -1 || secondColon === -1) return false;
-    
-                const storedLevel = key.substring(0, firstColon);
-                const chapterName = key.substring(firstColon + 1, secondColon);
-                const chapterContent = key.substring(secondColon + 1);
-    
-                return (
-                    storedLevel.trim() === userLevel.trim() &&
-                    levelChapters.some(chapter =>
-                        chapter.name.trim() === chapterName.trim() &&
-                        chapter.content.trim() === chapterContent.trim()
-                    )
-                );
-            })
-            .length;
-    
-        return levelChapters.length > 0
-            ? Math.round((completedCount / levelChapters.length) * 100)
-            : 0;
-    }
-    
-    async function fetchAndDisplayUserName() {
-        try {
-            const user = await waitForFirebase();
-             if (user) {
-                 const doc = await db.collection('users').doc(user.email).get();
-                  if (doc.exists) {
-                      const userData = doc.data();
-                     const nameElement = profileDetails.querySelector('p:first-child strong');
-                      if (nameElement) {
-                            const name = nameElement.parentElement.textContent.split(':')[1].trim();
-                             welcomeMessage.innerHTML = `<span data-i18n="welcomeBack">Welcome back,</span> ${name}!`;
-                        }
-                         // Fetch completed chapters from Firestore
-                         completedChapters = userData.progress || {};
-                
-                         // Fetch total time spent from Firestore and store it in variable totalTimeSpent
-                          if (userData.totaltimespent) {
-                               totalTimeSpent = userData.totaltimespent;
-                          }
-                          // Fetch total points from Firestore
-                          if(userData.totalPoints){
-                            totalPoints = userData.totalPoints;
-                          }
-                 
-                         //Fetch time per subject from firestore
-                          subjectTime = userData.subjectTime || {};
-                 
-                         // Set language from database
-                          userLanguage = userData.language || 'en';
-                         translatePage();
-                         profileDetails.innerHTML = `
-                              <p><strong data-i18n="name">Name:</strong> ${userData.name}</p>
-                               <p><strong data-i18n="email">Email:</strong> ${userData.email}</p>
-                               <p><strong data-i18n="language">Language:</strong> ${userData.language}</p>
-                               <p><strong data-i18n="language">Level:</strong> ${userData.testCategory}</p>
-                        `;
-                 
-                         //Calculate points based on completed chapters
-                       //  totalPoints =  Object.keys(completedChapters).length * 10;
-                 
-                         updateProgressDisplay();
-                             // Update user level display when the page loads
-                         
-                         const userLevelLS = localStorage.getItem('userLevel');
-                         const levelText = document.getElementById('user-level-text');
-                         if(levelText && userLevelLS) {
-                            const level = userLevelLS;
-                              levelText.textContent = i18n[userLanguage]['level'] +`: ${level.charAt(0).toUpperCase() + level.slice(1)}`;
-                         }
-    
-    
-                    }
-             }
+        if (profileDetails) {
+            profileDetails.innerHTML = `
+                <p><strong data-i18n="name">Name:</strong> ${userData.name}</p>
+                <p><strong data-i18n="email">Email:</strong> ${userData.email}</p>
+                <p><strong data-i18n="language">Language:</strong> ${userData.language}</p>
+                <p><strong data-i18n="level">Level:</strong> ${userData.testCategory}</p>
+            `;
         }
-        catch (error) {
-             console.error("Error fetching user data:", error);
-         }
+        updateProgressDisplay(); // This uses global completedChapters, totalPoints
+        translatePage(); // Ensure new elements are translated
     }
-    
+
+
     function updateProgressDisplay() {
+        // Uses global completedChapters, totalPoints, userLanguage
         const pointsHeading = pointsCard.querySelector('h2');
         const courseProgressHeading = progressCard.querySelector('h2');
-    
-        if (pointsHeading) {
-            pointsHeading.textContent = i18n[userLanguage]['totalPoints'];
-        }
-        if (courseProgressHeading) {
-            courseProgressHeading.textContent = i18n[userLanguage]['courseProgress'];
-        }
-    
-        progressCard.innerHTML = ``;
+
+        if (pointsHeading) pointsHeading.textContent = i18n[userLanguage]?.['totalPoints'] || 'Total Points';
+        if (courseProgressHeading) courseProgressHeading.textContent = i18n[userLanguage]?.['courseProgress'] || 'Course Progress';
+
+        progressCard.innerHTML = ``; // Clear previous
         let allSubjectsCompleted = true;
         subjects.forEach(subject => {
             const progressPercent = calculateSubjectProgress(subject.id, completedChapters);
@@ -832,1538 +771,1018 @@ document.addEventListener('DOMContentLoaded', () => {
             subjectDiv.innerHTML = `
                 <div class="subject-progress-header">
                     <span class="subject-icon">${subject.icon}</span>
-                    <h3 data-i18n="${subject.name}">${i18n[userLanguage][subject.name]}</h3>
+                    <h3 data-i18n="${subject.name}">${i18n[userLanguage]?.[subject.name] || subject.name}</h3>
                 </div>
                 <div class="progress-bar">
                     <div class="progress-bar-inner" style="width: ${progressPercent}%"></div>
                     <span class="percentage">${progressPercent}%</span>
-                </div>
-            `;
+                </div>`;
             progressCard.appendChild(subjectDiv);
-    
-            if (progressPercent < 100) {
-                allSubjectsCompleted = false;
-            }
+            if (progressPercent < 100) allSubjectsCompleted = false;
         });
-        if (allSubjectsCompleted) {
-            updateUserLevelAndResetProgress(); // Call new function
-        }
-    
-            // --- Update Total Points Card ---
-            if (pointsCard) {
-                pointsCard.innerHTML = `
-                    <h2 data-i18n="totalPoints">${i18n[userLanguage]?.['totalPoints'] || 'Total Points'}</h2>
-                    <p>${totalPoints} <span data-i18n="points">${i18n[userLanguage]?.['points'] || 'Points'}</span></p>
-                     <div class="token-container">
-                        <div class="token"></div>
-                     </div>
-              `;
-                // Apply dark mode if needed
-                if (body.classList.contains('dark-mode')) {
-                    pointsCard.classList.add('dark-mode');
-                    pointsCard.querySelector('h2')?.classList.add('dark-mode');
-                    pointsCard.querySelector('p')?.classList.add('dark-mode');
-                }
-    
-                // Add token animation logic here if desired
-                const token = pointsCard.querySelector('.token');
-                if (token) {
-                    // Optional: Re-trigger animation if needed, e.g., by removing/adding class
-                    token.style.animation = 'none'; // Reset animation
-                    requestAnimationFrame(() => { // Force reflow
-                        token.style.animation = ''; // Re-apply default animation
-                    });
-                }
-               pointsCard.style.display = "block";
-           } else {
-                console.warn("Points card element not found.");
-           }
-    
-           updateTotalTimeDisplay(); // Update time card
-           updateSubjectTimeDisplay(); // Update subject time card
-            // Ensure new elements are translated
-       }
-    async function updateUserLevelAndResetProgress() {
-        await updateUserLevel(); // First update the level
-    
-        const user = firebase.auth().currentUser;
-        if (user) {
-            try {
-                await db.collection('users').doc(user.email).update({
-                    progress: {},
-                });
-                completedChapters = {}; // Reset completed chapters
-                // totalPoints = 0; // Do not reset total points
-    
-                // Update the user level display after level update and progress reset
-                const levelText = document.getElementById('user-level-text');
-                if (levelText) {
-                   const level = localStorage.getItem('userLevel')
-                   if (level)
-                      levelText.textContent = i18n[userLanguage]['level'] +`: ${level.charAt(0).toUpperCase() + level.slice(1)}`;
-                 }
-                updateProgressDisplay(); // Refresh progress display
-               log("User progress reset after level up");
-            } catch (error) {
-                console.error("Error resetting user progress in Firestore:", error);
-            }
-        }
-    }
-    
-    async function updateProgress(topicData, subjectName) {
-        const user = firebase.auth().currentUser;
-        if (user) {
-          try {
-            const doc = await db.collection('users').doc(user.email).get();
-            if (doc.exists) {
-              const userData = doc.data();
-              const currentProgress = userData.progress || {};
-      
-              console.log('Current Progress:', currentProgress); // <-- Add this
-              console.log('Trying to add topicData:', topicData); // <-- Add this
-              
-              if (!currentProgress[topicData]) { 
-                currentProgress[topicData] = subjectName;
-      
-                completedChapters = currentProgress;
-      
-                await db.collection('users').doc(user.email).update({
-                  progress: currentProgress,
-                });
-                
-                totalPoints = totalPoints + 10;
-                await updatePointsInFirestore(totalPoints);
-                updateProgressDisplay();
-              }
-            }
-          } catch (error) {
-            console.error("Error updating progress in Firestore:", error);
-          }
-        }
-      }
-      
-    
-    async function updatePointsInFirestore(totalPoints){
-           const user = firebase.auth().currentUser;
-           if (user) {
-               try {
-                    await db.collection('users').doc(user.email).update({
-                          totalPoints: totalPoints
-                      });
-               }
-               catch(error){
-                  console.error("Error updating total points:", error)
-               }
-           }
-    }
-    // Call markChapterAsCompleted after content is loaded
-    function markChapterAsCompleted(chapterName, subjectName) {
-        // Add level to chapter name for unique tracking
-        const chapterKey = getChapterKey(chapterName);
 
+        if (allSubjectsCompleted && userLevel !== 'advanced') { // Only level up if not already advanced
+            updateUserLevelAndResetProgressOnServer();
+        }
+
+        if (pointsCard) {
+            pointsCard.innerHTML = `
+                <h2 data-i18n="totalPoints">${i18n[userLanguage]?.['totalPoints'] || 'Total Points'}</h2>
+                <p>${totalPoints} <span data-i18n="points">${i18n[userLanguage]?.['points'] || 'Points'}</span></p>
+                <div class="token-container"><div class="token"></div></div>`;
+            if (body.classList.contains('dark-mode')) {
+                pointsCard.classList.add('dark-mode');
+                pointsCard.querySelector('h2')?.classList.add('dark-mode');
+                pointsCard.querySelector('p')?.classList.add('dark-mode');
+            }
+            const token = pointsCard.querySelector('.token');
+            if (token) {
+                token.style.animation = 'none';
+                requestAnimationFrame(() => { token.style.animation = ''; });
+            }
+            pointsCard.style.display = "block";
+        }
+        updateTotalTimeDisplay();
+        updateSubjectTimeDisplay();
+        translatePage();
     }
-    
-    
-    // Call fetchAndDisplayUserName after data from firebase is loaded
-    (async function () {
-        await fetchAndDisplayUserName()
-        await fetchDarkModePreference();
-        calculateTotalTime()
-     })();
-    
-    
-    
+
+    async function updateUserLevelAndResetProgressOnServer() {
+        if (!currentUserEmail || userLevel === 'advanced') return;
+
+        let newLevel;
+        switch (userLevel) {
+            case 'beginner': newLevel = 'intermediate'; break;
+            case 'intermediate': newLevel = 'advanced'; break;
+            default: return;
+        }
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/updateUserLevelAndResetProgress`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: currentUserEmail, newLevel: newLevel })
+            });
+            if (!response.ok) throw new Error('Failed to update level and reset progress on server');
+
+            console.log("User level updated to:", newLevel, "and progress reset on server.");
+            userLevel = newLevel;
+            userData.testCategory = newLevel;
+            completedChapters = {}; // Reset client-side
+            userData.progress = {};
+
+            localStorage.setItem('userLevel', userLevel);
+            const levelText = document.getElementById('user-level-text');
+            if (levelText) {
+                levelText.textContent = `${i18n[userLanguage]?.['level'] || 'Level'}: ${userLevel.charAt(0).toUpperCase() + userLevel.slice(1)}`;
+            }
+            updateProgressDisplay(); // Refresh UI
+            renderSubjects(); // Re-render subjects for the new level
+
+        } catch (error) {
+            console.error("Error in updateUserLevelAndResetProgressOnServer:", error);
+        }
+    }
+
+
+    async function updateProgressOnServer(topicData, subjectName) {
+        if (!currentUserEmail) return;
+
+        // Check if chapter already completed to prevent duplicate server calls for points
+        if (completedChapters[topicData]) {
+            console.log("Chapter already marked as complete:", topicData);
+            return; // Already processed
+        }
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/updateProgress`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    email: currentUserEmail,
+                    topicData: topicData,
+                    subjectName: subjectName
+                })
+            });
+            if (!response.ok) throw new Error('Failed to update progress on server');
+
+            const result = await response.json();
+            if (result.pointsAwarded) { // Server should indicate if points were newly awarded
+                 totalPoints += 10; // Update client-side points
+                 userData.totalPoints = totalPoints;
+            }
+
+            completedChapters[topicData] = subjectName; // Update client-side progress
+            userData.progress = completedChapters;
+
+            console.log('Progress updated on server for:', topicData);
+            updateProgressDisplay(); // Refresh UI
+
+        } catch (error) {
+            console.error("Error updating progress on server:", error);
+        }
+    }
+
+    async function updatePointsOnServer(points) { // More generic function
+        if (!currentUserEmail) return;
+        try {
+            await fetch(`${API_BASE_URL}/updatePointsInFirestore`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: currentUserEmail, totalPoints: points })
+            });
+            totalPoints = points; // Update global
+            userData.totalPoints = points;
+            console.log("Total points updated on server to:", points);
+            // updateProgressDisplay(); // Usually called by the function that awarded points
+        } catch (error) {
+            console.error("Error updating total points on server:", error);
+        }
+    }
+
+
+    // markChapterAsCompleted is now effectively handled by updateProgressOnServer
+    function markChapterAsCompleted(chapterName, subjectName) {
+        const chapterKey = getChapterKey(chapterName); // Uses global userLevel
+        // The actual server update happens in updateProgressOnServer called from fetchChapterContent
+    }
+
+    function getChapterKey(chapterName) {
+        return `${userLevel}/${chapterName}`;
+    }
+
+    function calculateSubjectProgress(subjectId, currentCompletedChapters) {
+        const subject = subjects.find(s => s.id === subjectId);
+        if (!subject) return 0;
+        const levelChapters = subject.chapters[userLevel]; // Uses global userLevel
+        if (!levelChapters) return 0;
+
+        const completedCount = Object.keys(currentCompletedChapters)
+            .filter(key => {
+                const parts = key.split(':'); // topicData format: "level:chapterName: chapterContent"
+                if (parts.length < 2) return false;
+                const storedLevel = parts[0].trim();
+                const chapterFullName = parts.slice(1).join(':').trim(); // Rejoin content part
+
+                // Match based on level and if the chapter name is in this subject's level chapters
+                return (
+                    storedLevel === userLevel &&
+                    levelChapters.some(chapter => `${chapter.name}: ${chapter.content}` === chapterFullName)
+                );
+            }).length;
+        return levelChapters.length > 0 ? Math.round((completedCount / levelChapters.length) * 100) : 0;
+    }
+
+
+    // displayChapters, displayChapterView, fetchChapterContent (and its API calls) remain largely the same,
+    // but fetchChapterContent will use global `userLanguage`, `userData.mentalDisorder`
+
     function displayChapters(subject) {
       console.log("Displaying chapters for subject:", subject, "and userLevel:", userLevel);
-      const levelHeading = document.createElement('h2');
-      levelHeading.textContent = `${userLevel.toUpperCase()} LEVEL`;
-      chaptersContainer.appendChild(levelHeading);
       studyMenu.style.display = 'none';
       chaptersContainer.style.display = 'block';
       chapterContentContainer.style.display = 'none';
       backButtonContainer.style.display = 'flex';
-      chaptersContainer.innerHTML = '';
+      chaptersContainer.innerHTML = ''; // Clear previous
       document.getElementById('convert-to-audio').style.display = 'none';
-    
+
       if (!subject || !subject.chapters) {
         console.error("Error: Subject or subject chapters are undefined:", subject);
+        chaptersContainer.innerHTML = `<p class="error-message">${i18n[userLanguage]?.['errorLoading'] || 'Error loading chapters.'}</p>`;
         return;
       }
-    
-      const lowerCaseUserLevel = userLevel.toLowerCase(); // Convert userLevel to lowercase
-      const levelChapters = subject.chapters[lowerCaseUserLevel]; // Access with lowercase key
-    
-      if (!levelChapters) {
-        console.error(`Error: No chapters found for level: ${lowerCaseUserLevel} in subject:`, subject);
-        console.log("Available levels for this subject:", Object.keys(subject.chapters)); // Log available levels
+      const lowerCaseUserLevel = userLevel.toLowerCase();
+      const levelChapters = subject.chapters[lowerCaseUserLevel];
+
+      if (!levelChapters || !Array.isArray(levelChapters)) {
+        console.error(`Error: No chapters found for level: ${lowerCaseUserLevel} in subject:`, subject.name);
+        chaptersContainer.innerHTML = `<p class="error-message">${i18n[userLanguage]?.['errorNoChaptersLevel'] || 'No chapters available for this level.'}</p>`;
         return;
       }
-    
-      if (!Array.isArray(levelChapters)) {
-        console.error(`Error: levelChapters is not an array: `, levelChapters);
-        return;
-      }
-    
+
+
+
+
       levelChapters.forEach((chapter, index) => {
         const chapterButton = document.createElement('div');
         chapterButton.classList.add('chapter-button');
         chapterButton.setAttribute('tabindex', '0');
         chapterButton.innerHTML = `
-          <div class="chapter-button-image">
-            ${chapter.icon}
-          </div>
+          <div class="chapter-button-image">${chapter.icon}</div>
           <div class="chapter-button-content">
-            <h3 data-i18n="${chapter.name}">${i18n[userLanguage][chapter.name]}</h3>
-            <p data-i18n="${chapter.content}">${i18n[userLanguage][chapter.content]}</h3>
-          </div>
-        `;
-    
-        chapterButton.addEventListener('click', () => {
-            displayChapterView(chapter.name, chapter.content, subject.name);
-          });
-          
+            <h3 data-i18n="${chapter.name}">${i18n[userLanguage]?.[chapter.name] || chapter.name}</h3>
+            <p data-i18n="${chapter.content}">${i18n[userLanguage]?.[chapter.content] || chapter.content}</p>
+          </div>`;
+        chapterButton.addEventListener('click', () => displayChapterView(chapter.name, chapter.content, subject.name));
         chaptersContainer.appendChild(chapterButton);
       });
       chapterItems = chaptersContainer.querySelectorAll('.chapter-button');
+      if (body.classList.contains('dark-mode')) {
+        chaptersContainer.querySelectorAll('.chapter-button, h2, h3, p').forEach(el => el.classList.add('dark-mode'));
+      }
+      translatePage();
     }
-    
-        function displayChapterView(chapterName, chapterContent, subjectName) {
-            studyMenu.style.display = 'none';
-            chaptersContainer.style.display = 'none';
-            chapterContentContainer.style.display = 'block';
-            backButtonContainer.style.display = 'flex';
-    
-             // Clear the content before loading new content
-             contentTitle.textContent = ''; // Clear the title
-             contentText.innerHTML = '';   // Clear the content
-    
-    
-             loadingIndicator.style.display = 'block';
-            errorMessage.style.display = 'none';
-             fetchChapterContent(chapterName, chapterContent, subjectName);
-             
-               // Start subject timer
-             let currentSubjectId = null;
-             for (const subject of subjects) {
-                if (subject.chapters[userLevel].some(chapter => chapter.name === chapterName)) {
-                    currentSubjectId = subject.id;
-                    break;
-                }
-             }
-          startChapterTimer(currentSubjectId); // Start chapter timer on load
-             localStorage.setItem('lastCompletedChapter', chapterName);
-              setChapterFocus(0);
-        }
-    
-         // --- Helper function to cancel pending chapter fetch ---
-         function cancelCurrentChapterFetch() {
-            if (currentChapterFetchAbortController) {
-                console.log("Aborting previous chapter fetch request.");
-                currentChapterFetchAbortController.abort();
-                currentChapterFetchAbortController = null; // Clear the controller reference
-            }
-         }
-         // --- End Helper function ---
-    
-         // --- Helper function to cancel pending audio fetch ---
-         function cancelCurrentAudioFetch() {
-            if (currentAudioFetchAbortController) {
-                console.log("Aborting previous audio fetch request.");
-                currentAudioFetchAbortController.abort();
-                currentAudioFetchAbortController = null; // Clear the controller reference
-                // Also reset the button state if a conversion was ongoing
-                removeAndResetConvertToAudioButton();
-            }
-         }
-              // --- Helper function to cancel pending quiz fetch --- <<< ADDED START
-     function cancelCurrentQuizFetch() {
-        if (currentQuizFetchAbortController) {
-            console.log("Aborting previous quiz fetch request.");
-            currentQuizFetchAbortController.abort();
-            currentQuizFetchAbortController = null; // Clear the controller reference
 
-            // Also remove the "Generating quiz..." message or container if it exists
+    function displayChapterView(chapterName, chapterContent, subjectName) {
+        studyMenu.style.display = 'none';
+        chaptersContainer.style.display = 'none';
+        chapterContentContainer.style.display = 'block';
+        backButtonContainer.style.display = 'flex';
+        contentTitle.textContent = '';
+        contentText.innerHTML = '';
+        loadingIndicator.style.display = 'block';
+        errorMessage.style.display = 'none';
+
+        fetchChapterContent(chapterName, chapterContent, subjectName);
+
+        let currentSubjectId = null;
+        const subject = subjects.find(s => s.name === subjectName);
+        if (subject) currentSubjectId = subject.id;
+
+        startChapterTimer(currentSubjectId);
+        localStorage.setItem('lastCompletedChapter', chapterName); // Still useful for UI state
+        setChapterFocus(0);
+    }
+
+    function cancelCurrentChapterFetch() { /* ... unchanged ... */
+        if (currentChapterFetchAbortController) {
+            currentChapterFetchAbortController.abort();
+            currentChapterFetchAbortController = null;
+        }
+    }
+    function cancelCurrentAudioFetch() { /* ... unchanged ... */
+        if (currentAudioFetchAbortController) {
+            currentAudioFetchAbortController.abort();
+            currentAudioFetchAbortController = null;
+            removeAndResetConvertToAudioButton();
+        }
+    }
+    function cancelCurrentQuizFetch() { /* ... unchanged ... */
+        if (currentQuizFetchAbortController) {
+            currentQuizFetchAbortController.abort();
+            currentQuizFetchAbortController = null;
             const quizContainer = document.getElementById('quiz-container');
             if (quizContainer && quizContainer.innerHTML.includes('Generating quiz...')) {
-                 // Optionally, you could just clear the message:
-                 // quizContainer.innerHTML = '';
-                 // Or remove the container entirely if cancellation happens:
-                 quizContainer.remove();
-                 console.log("Removed quiz container due to cancellation.");
+                 quizContainer.innerHTML = ''; // Clear generating message
             }
         }
-     }
-         // --- End Helper function ---
-    
-    
-        function removeAndResetConvertToAudioButton() {
-          const convertButton = document.getElementById('convert-to-audio');
-          const playButton = document.getElementById('play-audio');
-      
-          if (convertButton) {
-              convertButton.disabled = false; // Enable it, in case it's disabled
-              convertButton.textContent = 'Convert To Audio'; // Reset the text
-              convertButton.style.display = 'none'; // Hide it from the page
-          }
-      
-          if (playButton) {
-              playButton.style.display = 'none'; // Hide the Play button
-          }
-      
-          // Delete the received audio file
-          if (window.audioUrl) {
-              URL.revokeObjectURL(window.audioUrl); // Revoke the object URL to release memory
-              window.audioUrl = null;
-          }
-      
-          if (window.audio) {
-              window.audio.pause(); // Stop any playing audio
-              window.audio.currentTime = 0; // Reset playback position
-              window.audio = null;
-          }
-      }
-      
-      // Ensure the back button triggers this function
-      if (backButton) {
-          backButton.addEventListener('click', () => {
-              removeAndResetConvertToAudioButton();
-          });
-      } else {
-          console.warn("Back button element not found. Ensure the global 'backButton' variable is correctly assigned.");
-      }
-      
-    
-    
-      async function fetchChapterContent(chapterName, chapterContent, subjectName) {
-          // --- ABORT CONTROLLER LOGIC (START) ---
-          // Abort any previous chapter request if it's still pending
-          cancelCurrentChapterFetch();
-          // Also abort any pending audio request just in case
-          cancelCurrentAudioFetch();
-    
-    
-          // Create a new AbortController for this specific chapter request
-          const controller = new AbortController();
-          currentChapterFetchAbortController = controller; // Store the new controller
-          const signal = controller.signal;
-          // --- ABORT CONTROLLER LOGIC (END) ---
-    
-          try {
-              const user = firebase.auth().currentUser;
-              if (!user) {
-                 console.error("User not authenticated.");
-                 loadingIndicator.style.display = 'none';
-                 errorMessage.style.display = 'block';
-                 errorText.textContent = i18n[userLanguage]['errorLoading'];
-                 return;
-              }
-    
-              const doc = await db.collection('users').doc(user.email).get();
-              if (!doc.exists) {
-                 console.error("User document not found for:", user.email);
-                 loadingIndicator.style.display = 'none';
-                 errorMessage.style.display = 'block';
-                 errorText.textContent = i18n[userLanguage]['errorLoading'];
-                 return;
-              }
-    
-              const userData = doc.data();
-              userLanguage = userData.language || 'English';
-              const mentalDisorder = userData.mentalDisorder || 'Perfectly Fine'; // Assuming default
-    
-              // Find the subject
-              const subject = subjects.find(s => s.name === subjectName);
-              if (!subject) {
-                  console.error(`Subject ${subjectName} not found`);
-                  loadingIndicator.style.display = 'none';
-                  errorMessage.style.display = 'block';
-                  errorText.textContent = i18n[userLanguage]['errorLoading'];
-                  return;
-              }
-      
-              // Find the chapter within the subject and user level
-              const lowerCaseUserLevel = userLevel.toLowerCase(); //ensure level is lower case
-              const levelChapters = subject.chapters[lowerCaseUserLevel];
-              if (!levelChapters) {
-                  console.error(`No chapters found for level: ${userLevel} in subject: ${subjectName}`);
-                  loadingIndicator.style.display = 'none';
-                  errorMessage.style.display = 'block';
-                  errorText.textContent = i18n[userLanguage]['errorLoading'];
-                  return;
-              }
-      
-              const chapter = levelChapters.find(c => 
-                c.name === chapterName && c.content === chapterContent
-              );
-          
-              if (!chapter) {
-                console.error(`Chapter not found for ${chapterName} and ${chapterContent}`);
+    }
+    function removeAndResetConvertToAudioButton() { /* ... unchanged ... */
+        const convertButton = document.getElementById('convert-to-audio');
+        const playButton = document.getElementById('play-audio');
+        if (convertButton) {
+            convertButton.disabled = false;
+            convertButton.textContent = i18n[userLanguage]?.['convertToAudio'] || 'Convert To Audio';
+            convertButton.style.display = 'none';
+        }
+        if (playButton) playButton.style.display = 'none';
+        if (window.audioUrl) {
+            URL.revokeObjectURL(window.audioUrl);
+            window.audioUrl = null;
+        }
+        if (window.audio) {
+            window.audio.pause();
+            window.audio.currentTime = 0;
+            window.audio = null;
+        }
+    }
+    if (backButton) {
+        backButton.addEventListener('click', () => {
+            // removeAndResetConvertToAudioButton(); // This is handled by navigateToSubjects/Chapters
+        });
+    }
+
+    async function fetchChapterContent(chapterName, chapterContent, subjectName) {
+        cancelCurrentChapterFetch();
+        cancelCurrentAudioFetch();
+        cancelCurrentQuizFetch(); // Cancel quiz too
+
+        const controller = new AbortController();
+        currentChapterFetchAbortController = controller;
+        const signal = controller.signal;
+
+        try {
+            // userLanguage and userData.mentalDisorder are now global from fetchInitialUserData
+            const topicData = `${userLevel}:${chapterName}: ${chapterContent}`;
+
+            const response = await fetch('https://study-gen-api-213051243033.asia-south2.run.app/generate-chapter', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    topic: topicData,
+                    language: userLanguage,
+                    mentalDisorder: userData.mentalDisorder,
+                }),
+                signal: signal
+            });
+
+            if (!response.ok) throw new Error('Network response was not ok for chapter content');
+            const data = await response.json();
+            displayChapterContent(data, chapterName, subjectName); // subjectName is passed for context
+            loadingIndicator.style.display = 'none';
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+
+            // Update progress on our server AFTER content is successfully fetched and displayed
+            await updateProgressOnServer(topicData, subjectName);
+
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                console.log('Chapter fetch aborted.');
+            } else {
                 loadingIndicator.style.display = 'none';
                 errorMessage.style.display = 'block';
-                errorText.textContent = i18n[userLanguage]['errorLoading'];
-                return;
-              }
-          
-              const topicData = `${userLevel}:${chapter.name}: ${chapter.content}`; 
+                errorText.textContent = i18n[userLanguage]?.['errorLoading'] || 'Error loading content.';
+                console.error("Error in fetchChapterContent:", error);
+            }
+        } finally {
+            if (currentChapterFetchAbortController === controller) {
+                currentChapterFetchAbortController = null;
+            }
+        }
+    }
 
-              const response = await fetch('https://study-gen-api-213051243033.asia-south2.run.app/generate-chapter', {
-                  method: 'POST',
-                  headers: {
-                      'Content-Type': 'application/json'
-                  },
-                  body: JSON.stringify({
-                      topic: topicData,  // Send the combined data
-                      language: userLanguage,
-                      mentalDisorder: mentalDisorder,
-                  }),
-                  signal: signal // --- ABORT CONTROLLER LOGIC: Pass the signal ---
-              });
-      
-              if (!response.ok) {
-                  throw new Error('Network response was not ok');
-              }
-              const data = await response.json();
-              displayChapterContent(data, chapterName, subjectName);
-              loadingIndicator.style.display = 'none';
-               // Scroll to the top smoothly after content is displayed
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-              updateProgress(topicData, subjectName)
-    
-          } catch (error) {
-               // --- ABORT CONTROLLER LOGIC: Handle AbortError ---
-               if (error.name === 'AbortError') {
-                    console.log('Chapter fetch aborted by user navigation.');
-                    // Do nothing, as the navigation has already happened
-                    // Ensure loading state is cleared if aborted before completion
-                    loadingIndicator.style.display = 'none';
-               } else {
-               // --- End ABORT CONTROLLER LOGIC ---
-                   loadingIndicator.style.display = 'none';
-                   errorMessage.style.display = 'block';
-                   errorText.textContent = i18n[userLanguage]['errorLoading'];
-                   console.error("Error in fetchChapterContent:", error);
-               }
-          } finally {
-               // --- ABORT CONTROLLER LOGIC: Clear controller after fetch settles ---
-               if (currentChapterFetchAbortController === controller) { // Only clear if this is still the current controller
-                   currentChapterFetchAbortController = null;
-               }
-               // --- End ABORT CONTROLLER LOGIC ---
-          }
-      }    
-    
-    
-    
-      function handleAudioConversionSuccess() {
+    // handleAudioConversionSuccess, window.convertToAudio, window.playAudio remain largely the same
+    // as they interact with external audio APIs, not our Firestore backend directly.
+    // convertToAudio uses global `chapterTextContent` and `userLanguage`.
+    function handleAudioConversionSuccess() { /* ... unchanged ... */
         const convertButton = document.getElementById('convert-to-audio');
-    
         if (convertButton) {
-            convertButton.textContent = 'Converted'; // Change text
-            convertButton.disabled = true; // Make it unclickable
+            convertButton.textContent = i18n[userLanguage]?.['converted'] || 'Converted';
+            convertButton.disabled = true;
         }
     }
-    
-    // Modify the existing function to call handleAudioConversionSuccess() after audio is received
-    window.convertToAudio = async function () {
-      const convertButton = document.getElementById('convert-to-audio');
-      const playButton = document.getElementById('play-audio');
-    
-      if (convertButton.disabled) return;
-    
-      // --- ABORT CONTROLLER LOGIC (START) ---
-      // Abort any previous audio request if it's still pending
-      cancelCurrentAudioFetch();
-    
-      // Create a new AbortController for this specific audio request
-      const controller = new AbortController();
-      currentAudioFetchAbortController = controller; // Store the new controller
-      const signal = controller.signal;
-      // --- ABORT CONTROLLER LOGIC (END) ---
-    
-    
-      convertButton.disabled = true;
-      convertButton.textContent = 'Converting...';
-    
-      let apiEndpoint = 'https://audio-api-213051243033.asia-south2.run.app/generate_audio';
-    
-      // Note: This language-based endpoint selection logic needs to be consistent
-      // with where the actual APIs are deployed. This part wasn't changed,
-      // assuming it was working correctly before adding AbortController.
-      if (
-        userLanguage === 'Swahili' ||
-        userLanguage === 'Persian' ||
-        userLanguage === 'Urdu' ||
-        userLanguage === 'Croatian' ||
-        userLanguage === 'Lithuanian' ||
-        userLanguage === 'Estonian'
-      ) {
-        apiEndpoint = 'https://secondary-audio-api-213051243033.asia-south2.run.app/generate_audio'; // Replace with your alternative API URL
-      }
-    
-      try {
-          const response = await fetch(apiEndpoint, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ essay: chapterTextContent, language: userLanguage }),
-              signal: signal // --- ABORT CONTROLLER LOGIC: Pass the signal ---
-          });
-    
-          if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-    
-          const blob = await response.blob();
-          window.audioUrl = URL.createObjectURL(blob);
-          window.audio = new Audio(window.audioUrl);
-    
-          // Event listener for cleaning up audio URL after playing
-          window.audio.addEventListener('ended', () => {
-              URL.revokeObjectURL(window.audioUrl); // Clean up
-               // Optionally reset the play button text after audio finishes
-               const playBtn = document.getElementById('play-audio');
-               if(playBtn) playBtn.textContent = i18n[userLanguage]?.['play'] || 'Play'; // Reset text to translated value
-          });
-    
-          playButton.style.display = 'block';
-          playButton.textContent = i18n[userLanguage]?.['play'] || 'Play'; // Ensure it says Play (translated) initially
-          handleAudioConversionSuccess(); // Change convert button text and disable it
-    
-      } catch (error) {
-           // --- ABORT CONTROLLER LOGIC: Handle AbortError ---
-           if (error.name === 'AbortError') {
+    window.convertToAudio = async function () { /* ... unchanged, ensure userLanguage is correctly set globally ... */
+        const convertButton = document.getElementById('convert-to-audio');
+        const playButton = document.getElementById('play-audio');
+        if (convertButton.disabled) return;
+
+        cancelCurrentAudioFetch();
+        const controller = new AbortController();
+        currentAudioFetchAbortController = controller;
+        const signal = controller.signal;
+
+        convertButton.disabled = true;
+        convertButton.textContent = i18n[userLanguage]?.['converting'] || 'Converting...';
+        let apiEndpoint = 'https://audio-api-213051243033.asia-south2.run.app/generate_audio';
+        if (['Swahili', 'Persian', 'Urdu', 'Croatian', 'Lithuanian', 'Estonian'].includes(userLanguage)) {
+            apiEndpoint = 'https://secondary-audio-api-213051243033.asia-south2.run.app/generate_audio';
+        }
+
+        try {
+            const response = await fetch(apiEndpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ essay: chapterTextContent, language: userLanguage }),
+                signal: signal
+            });
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            const blob = await response.blob();
+            window.audioUrl = URL.createObjectURL(blob);
+            window.audio = new Audio(window.audioUrl);
+            window.audio.addEventListener('ended', () => {
+                URL.revokeObjectURL(window.audioUrl);
+                if(playButton) playButton.textContent = i18n[userLanguage]?.['play'] || 'Play';
+            });
+            playButton.style.display = 'block';
+            playButton.textContent = i18n[userLanguage]?.['play'] || 'Play';
+            handleAudioConversionSuccess();
+        } catch (error) {
+            if (error.name === 'AbortError') {
                 console.log('Audio fetch aborted.');
-                // The `removeAndResetConvertToAudioButton` called by `cancelCurrentAudioFetch`
-                // already handles button reset, so nothing more needed here for AbortError.
-           } else {
-           // --- End ABORT CONTROLLER LOGIC ---
-               console.error("Error converting text to speech:", error);
-               convertButton.textContent = i18n[userLanguage]?.['conversionFailed'] || 'Conversion Failed'; // Use translated error
-               setTimeout(() => {
-                   convertButton.textContent = i18n[userLanguage]?.['convertToAudio'] || 'Convert To Audio'; // Reset text to translated value
-                   convertButton.disabled = false;
-               }, 3000);
-           }
-      } finally {
-           // --- ABORT CONTROLLER LOGIC: Clear controller after fetch settles ---
-           if (currentAudioFetchAbortController === controller) { // Only clear if this is still the current controller
-               currentAudioFetchAbortController = null;
-           }
-           // --- End ABORT CONTROLLER LOGIC ---
-      }
+            } else {
+                console.error("Error converting text to speech:", error);
+                convertButton.textContent = i18n[userLanguage]?.['conversionFailed'] || 'Conversion Failed';
+                setTimeout(() => {
+                    convertButton.textContent = i18n[userLanguage]?.['convertToAudio'] || 'Convert To Audio';
+                    convertButton.disabled = false;
+                }, 3000);
+            }
+        } finally {
+            if (currentAudioFetchAbortController === controller) {
+                currentAudioFetchAbortController = null;
+            }
+        }
     };
-    
-    window.playAudio = function() {
-      const playButton = document.getElementById('play-audio');
-      if (window.audio) { // Correctly access the global audio
-          if (window.audio.paused) {
-              window.audio.play();
-              playButton.textContent = i18n[userLanguage]?.['pause'] || 'Pause'; // Change to Pause (translated)
-          } else {
-              window.audio.pause();
-              playButton.textContent = i18n[userLanguage]?.['play'] || 'Play'; // Change to Play (translated)
-          }
-      }
-    };
-    
-    
-    let chapterTextContent = ''; // IMPORTANT: Initialize it!
-
-
-function displayChapterContent(data, chapterName, subjectName) {
-    if (!contentTitle || !contentText) return;
-
-    // Set title using translated chapter name
-    const chapterNameKey = chapterName;
-    contentTitle.dataset.i18n = chapterNameKey; // Set key for potential re-translation
-    contentTitle.textContent = i18n[userLanguage]?.[chapterNameKey] || chapterName; // Use translation, fallback to original
-
-    contentText.innerHTML = ''; // Clear just before adding new content
-    chapterTextContent = ''; // Reset TTS text
-
-    let currentSectionElement = null;
-    let isList = false;
-
-    const cleanLine = (line) => {
-        const cleaned = line.replace(/^[\s*#-]+/g, '').trim();
-        // Convert *word* to <strong>word</strong> for bold
-        return cleaned.replace(/\*(.*?)\*/g, '<strong>$1</strong>');
+    window.playAudio = function() { /* ... unchanged, ensure i18n works ... */
+        const playButton = document.getElementById('play-audio');
+        if (window.audio) {
+            if (window.audio.paused) {
+                window.audio.play();
+                playButton.textContent = i18n[userLanguage]?.['pause'] || 'Pause';
+            } else {
+                window.audio.pause();
+                playButton.textContent = i18n[userLanguage]?.['play'] || 'Play';
+            }
+        }
     };
 
-    if (data && data.chapter) {
-        const lines = data.chapter.split('\n');
+    let chapterTextContent = '';
+    function displayChapterContent(data, chapterName, subjectName) { /* ... parsing logic unchanged ... */
+        if (!contentTitle || !contentText) return;
+        const chapterNameKey = chapterName; // Assuming chapterName is a direct key or needs mapping
+        contentTitle.dataset.i18n = chapterNameKey;
+        contentTitle.textContent = i18n[userLanguage]?.[chapterNameKey] || chapterName;
+        contentText.innerHTML = '';
+        chapterTextContent = '';
+        let currentSectionElement = null;
+        let isList = false;
+        const cleanLine = (line) => line.replace(/^[\s*#-]+/g, '').trim().replace(/\*(.*?)\*/g, '<strong>$1</strong>');
 
-        lines.forEach(line => {
-            const trimmedLine = line.trim();
-
-            // --- Heading Detection (More specific) ---
-            if (trimmedLine.startsWith('## ')) {
-                appendCurrentSection(); // Finish previous section first
-                currentSectionElement = createSection('chapter-section');
-                const heading = document.createElement('h2');
-                const cleaned = cleanLine(trimmedLine.substring(3));
-                heading.innerHTML = cleaned; // Use innerHTML if markdown might be present
-                currentSectionElement.appendChild(heading);
-                chapterTextContent += cleaned.replace(/<[^>]+>/g, '') + '\n\n'; // Strip tags for TTS
-                isList = false;
-            } else if (trimmedLine.startsWith('### ')) {
-                appendCurrentSection();
-                currentSectionElement = createSection('chapter-subsection');
-                const subheading = document.createElement('h3');
-                const cleaned = cleanLine(trimmedLine.substring(4));
-                subheading.innerHTML = cleaned;
-                currentSectionElement.appendChild(subheading);
-                chapterTextContent += cleaned.replace(/<[^>]+>/g, '') + '\n\n';
-                isList = false;
-            }
-            // --- List Detection ---
-            else if (/^\d+\.\s+/.test(trimmedLine)) { // Ordered list (e.g., "1. ")
-                if (!isList || currentSectionElement?.tagName !== 'OL') {
-                    appendCurrentSection();
-                    currentSectionElement = document.createElement('ol');
-                    if (body.classList.contains('dark-mode')) currentSectionElement.classList.add('dark-mode');
-                    isList = true;
+        if (data && data.chapter) {
+            const lines = data.chapter.split('\n');
+            lines.forEach(line => {
+                const trimmedLine = line.trim();
+                if (trimmedLine.startsWith('## ')) {
+                    appendCurrentSection(); currentSectionElement = createSection('chapter-section');
+                    const heading = document.createElement('h2'); const cleaned = cleanLine(trimmedLine.substring(3));
+                    heading.innerHTML = cleaned; currentSectionElement.appendChild(heading);
+                    chapterTextContent += cleaned.replace(/<[^>]+>/g, '') + '\n\n'; isList = false;
+                } else if (trimmedLine.startsWith('### ')) {
+                    appendCurrentSection(); currentSectionElement = createSection('chapter-subsection');
+                    const subheading = document.createElement('h3'); const cleaned = cleanLine(trimmedLine.substring(4));
+                    subheading.innerHTML = cleaned; currentSectionElement.appendChild(subheading);
+                    chapterTextContent += cleaned.replace(/<[^>]+>/g, '') + '\n\n'; isList = false;
+                } else if (/^\d+\.\s+/.test(trimmedLine)) {
+                    if (!isList || currentSectionElement?.tagName !== 'OL') { appendCurrentSection(); currentSectionElement = document.createElement('ol'); if (body.classList.contains('dark-mode')) currentSectionElement.classList.add('dark-mode'); isList = true; }
+                    const listItem = document.createElement('li'); const cleaned = cleanLine(trimmedLine.substring(trimmedLine.indexOf('.') + 1));
+                    listItem.innerHTML = cleaned; currentSectionElement.appendChild(listItem); chapterTextContent += `- ${cleaned.replace(/<[^>]+>/g, '')}\n`;
+                } else if (/^[\*\-]\s+/.test(trimmedLine)) {
+                    if (!isList || currentSectionElement?.tagName !== 'UL') { appendCurrentSection(); currentSectionElement = document.createElement('ul'); if (body.classList.contains('dark-mode')) currentSectionElement.classList.add('dark-mode'); isList = true; }
+                    const listItem = document.createElement('li'); const cleaned = cleanLine(trimmedLine.substring(trimmedLine.indexOf(' ') + 1));
+                    listItem.innerHTML = cleaned; currentSectionElement.appendChild(listItem); chapterTextContent += `- ${cleaned.replace(/<[^>]+>/g, '')}\n`;
+                } else if (trimmedLine !== '') {
+                    if (isList || !currentSectionElement || currentSectionElement.tagName === 'OL' || currentSectionElement.tagName === 'UL') { appendCurrentSection(); currentSectionElement = createSection('chapter-paragraph'); isList = false; }
+                    const para = document.createElement('p'); const cleaned = cleanLine(trimmedLine);
+                    para.innerHTML = cleaned; currentSectionElement.appendChild(para); chapterTextContent += cleaned.replace(/<[^>]+>/g, '') + '\n';
                 }
-                const listItem = document.createElement('li');
-                const cleaned = cleanLine(trimmedLine.substring(trimmedLine.indexOf('.') + 1));
-                listItem.innerHTML = cleaned;
-                currentSectionElement.appendChild(listItem);
-                chapterTextContent += `- ${cleaned.replace(/<[^>]+>/g, '')}\n`;
-            } else if (/^[\*\-]\s+/.test(trimmedLine)) { // Unordered list (e.g., "* " or "- ")
-                if (!isList || currentSectionElement?.tagName !== 'UL') {
-                    appendCurrentSection();
-                    currentSectionElement = document.createElement('ul');
-                    if (body.classList.contains('dark-mode')) currentSectionElement.classList.add('dark-mode');
-                    isList = true;
-                }
-                const listItem = document.createElement('li');
-                const cleaned = cleanLine(trimmedLine.substring(trimmedLine.indexOf(' ') + 1));
-                listItem.innerHTML = cleaned;
-                currentSectionElement.appendChild(listItem);
-                chapterTextContent += `- ${cleaned.replace(/<[^>]+>/g, '')}\n`;
+            });
+            appendCurrentSection();
+        } else {
+            contentText.innerHTML = `<p>${i18n[userLanguage]?.['emptyChapter'] || 'Chapter content is empty.'}</p>`;
+        }
+        function appendCurrentSection() { if (currentSectionElement) { contentText.appendChild(currentSectionElement); currentSectionElement = null; } }
+        function createSection(className) { const section = document.createElement('div'); section.className = className; return section; }
+
+        if (body.classList.contains('dark-mode')) {
+            contentText.querySelectorAll('h2, h3, p, li, ul, ol').forEach(el => el.classList.add('dark-mode'));
+        }
+        // markChapterAsCompleted(chapterName, subjectName); // This is now implicitly handled by updateProgressOnServer
+
+        const convertButton = document.getElementById('convert-to-audio');
+        if (convertButton && chapterContentContainer.style.display === 'block') {
+            convertButton.style.display = 'inline-flex'; convertButton.disabled = false;
+            convertButton.textContent = i18n[userLanguage]?.['convertToAudio'] || 'Convert To Audio';
+        } else if (convertButton) {
+            convertButton.style.display = 'none';
+        }
+        const playButton = document.getElementById('play-audio');
+        if (playButton) playButton.style.display = 'none';
+
+        generateQuiz(chapterTextContent);
+    }
+
+    // generateQuiz, displayQuiz, gradeQuiz interact with external Quiz API and update points via our server
+    async function generateQuiz(chapterTextContent) { /* ... unchanged, but ensure AbortController for quiz fetch works ... */
+        cancelCurrentQuizFetch();
+        const controller = new AbortController();
+        currentQuizFetchAbortController = controller;
+        const signal = controller.signal;
+
+        const quizContainer = document.createElement('div');
+        quizContainer.id = 'quiz-container';
+        contentText.appendChild(quizContainer);
+        quizContainer.innerHTML = `<p data-i18n="generatingQuiz">${i18n[userLanguage]?.['generatingQuiz'] || 'Generating quiz...'}</p>`;
+        translatePage();
+
+        try {
+            const response = await fetch('https://quiz-api-213051243033.asia-south2.run.app/generate-quiz', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ chapterText: chapterTextContent }),
+                signal: signal
+            });
+            if (!response.ok) {
+                if (signal.aborted) { console.log('Quiz generation aborted by user.'); return; }
+                throw new Error(`Quiz generation failed: ${response.status}`);
             }
-            // --- Paragraph Handling ---
-            else if (trimmedLine !== '') {
-                if (isList || !currentSectionElement || currentSectionElement.tagName === 'OL' || currentSectionElement.tagName === 'UL') {
-                    appendCurrentSection();
-                    currentSectionElement = createSection('chapter-paragraph');
-                    isList = false;
-                }
-                const para = document.createElement('p');
-                const cleaned = cleanLine(trimmedLine);
-                para.innerHTML = cleaned;
-                currentSectionElement.appendChild(para);
-                chapterTextContent += cleaned.replace(/<[^>]+>/g, '') + '\n';
-            }
-            // --- Empty lines are ignored unless needed for spacing (handled by \n in TTS text) ---
-            fetchUserLevel()
-        });
-        
-
-        appendCurrentSection(); // Append the very last section
-    } else {
-        contentText.innerHTML = `<p>${i18n[userLanguage]?.['emptyChapter'] || 'Chapter content is empty.'}</p>`;
-    }
-
-    // Helper: Appends current section to DOM if it exists
-    function appendCurrentSection() {
-        if (currentSectionElement) {
-            contentText.appendChild(currentSectionElement);
-            currentSectionElement = null;
-        }
-    }
-
-    // Helper: Creates a new section with a class
-    function createSection(className) {
-        const section = document.createElement('div');
-        section.className = className;
-        return section;
-    }
-
-
-     // Apply dark mode to newly added elements
-    if (body.classList.contains('dark-mode')) {
-        contentText.querySelectorAll('h2, h3, p, li, ul, ol').forEach(el => el.classList.add('dark-mode'));
-    }
-
-    // Mark chapter as completed *after* successful display
-    markChapterAsCompleted(chapterName, subjectName);
-
-   // --- Show Convert button IFF chapterContentContainer is visible ---
-   const convertButton = document.getElementById('convert-to-audio');
-   if (convertButton && chapterContentContainer.style.display === 'block') {
-       convertButton.style.display = 'inline-flex'; // Use inline-flex or block as appropriate
-       convertButton.disabled = false;
-        // Translate button text
-       convertButton.textContent = i18n[userLanguage]?.['convertToAudio'] || 'Convert To Audio';
-   } else if (convertButton) {
-       convertButton.style.display = 'none'; // Ensure it's hidden if not visible
-   }
-    // Ensure Play button remains hidden initially
-    const playButton = document.getElementById('play-audio');
-    if (playButton) playButton.style.display = 'none';
-
-    // Helper function for creating sections
-    function createSection(className) {
-        const div = document.createElement('div');
-        div.classList.add(className);
-         if (body.classList.contains('dark-mode')) div.classList.add('dark-mode');
-        return div;
-    }
-
-    // Helper function to append the current section to the main contentText area
-    function appendCurrentSection() {
-        if (currentSectionElement) {
-            contentText.appendChild(currentSectionElement);
-            // currentSectionElement = null; // Reset for the next section
-        }
-    }
-
-
-    // ------------------- New Code: Generate Quiz  ---------------------
-    generateQuiz(chapterTextContent);
-}
-
-// Add this new function to para-script.js
-// Add this new function to para-script.js
-async function generateQuiz(chapterTextContent) {
-    // --- ABORT CONTROLLER LOGIC (START) ---                   <<< ADDED
-    // Abort any previous quiz request if it's still pending
-    cancelCurrentQuizFetch();
-
-    // Create a new AbortController for this specific quiz request
-    const controller = new AbortController();
-    currentQuizFetchAbortController = controller; // Store the new controller
-    const signal = controller.signal;
-    // --- ABORT CONTROLLER LOGIC (END) ---                     <<< ADDED
-
-
-    const quizContainer = document.createElement('div');
-    quizContainer.id = 'quiz-container';
-    contentText.appendChild(quizContainer);  // Append to content text
-
-    quizContainer.innerHTML = '<p data-i18n="generatingQuiz">Generating quiz...</p>';
-    translatePage(); // Make sure the generating message is translated if needed
-
-    try {
-        const response = await fetch('https://quiz-api-213051243033.asia-south2.run.app/generate-quiz', { // Replace with your server URL
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                chapterText: chapterTextContent
-            }),
-            signal: signal // --- ABORT CONTROLLER LOGIC: Pass the signal --- <<< ADDED
-        });
-
-        if (!response.ok) {
-            // Don't throw error if it was aborted by user
-            if (signal.aborted) {                                    // <<< ADDED
-                console.log('Quiz generation fetch aborted by user.'); // <<< ADDED
-                return; // Exit function silently                 // <<< ADDED
-            }                                                        // <<< ADDED
-            throw new Error(`Quiz generation failed: ${response.status}`);
-        }
-
-        const data = await response.json();
-
-        // --- ABORT CHECK before displaying ---                     <<< ADDED
-        // Check if aborted *after* fetch completed but before display
-        if (signal.aborted) {                                     // <<< ADDED
-            console.log('Quiz generation aborted before display.'); // <<< ADDED
-            return;                                               // <<< ADDED
-        }                                                         // <<< ADDED
-        // --- End ABORT CHECK ---                                 <<< ADDED
-
-        displayQuiz(data.quiz);
-
-    } catch (error) {
-         // --- ABORT CONTROLLER LOGIC: Handle AbortError ---        <<< ADDED
-         if (error.name === 'AbortError') {
-              console.log('Quiz fetch aborted by user navigation.');
-              // UI cleanup is handled by cancelCurrentQuizFetch called during navigation
-         } else {
-         // --- End ABORT CONTROLLER LOGIC ---                      <<< ADDED
-            console.error("Error generating quiz:", error);
-            // Optionally display an error in the quiz container
-            if(quizContainer) { // Check if container still exists
-                quizContainer.innerHTML = '<p class="error-message">Failed to generate quiz.</p>';
-                 if (body.classList.contains('dark-mode')) { // Apply dark mode if needed
+            const data = await response.json();
+            if (signal.aborted) { console.log('Quiz generation aborted before display.'); return; }
+            displayQuiz(data.quiz);
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                console.log('Quiz fetch aborted.');
+            } else {
+                console.error("Error generating quiz:", error);
+                if(quizContainer) quizContainer.innerHTML = `<p class="error-message">${i18n[userLanguage]?.['quizFail'] || 'Failed to generate quiz.'}</p>`;
+                if (body.classList.contains('dark-mode') && quizContainer) {
                     quizContainer.querySelector('.error-message')?.classList.add('dark-mode');
                 }
             }
-         }
-    } finally {
-         // --- ABORT CONTROLLER LOGIC: Clear controller after fetch settles --- <<< ADDED
-         if (currentQuizFetchAbortController === controller) { // Only clear if this is *still* the current controller
-             currentQuizFetchAbortController = null;
-         }
-         // --- End ABORT CONTROLLER LOGIC ---                            <<< ADDED
-    }
-}
-function displayQuiz(quizData) {
-    const quizContainer = document.getElementById('quiz-container');
-    if (!quizContainer) {
-        console.error("Quiz container not found.");
-        return;
-    }
-
-    quizContainer.innerHTML = '<h2>Quiz</h2>';
-    const quizForm = document.createElement('form'); // Wrap quiz in a form for submission
-    quizContainer.appendChild(quizForm);
-
-    quizData.forEach((questionData, index) => {
-        const questionDiv = document.createElement('div');
-        questionDiv.classList.add('quiz-question'); // Add a class for styling and selection
-        questionDiv.innerHTML = `<p>${questionData.question}</p>`;
-
-        const optionsList = document.createElement('ul');
-        optionsList.classList.add('quiz-options');
-
-        // Iterate through options using keys from server data
-        for (const optionKey in questionData.options) {
-            const optionItem = document.createElement('li');
-            optionItem.classList.add('quiz-option'); // Add class for styling
-
-            const radioInput = document.createElement('input');
-            radioInput.type = 'radio';
-            radioInput.name = `question-${index}`; // Unique name for each question's radio buttons
-            radioInput.value = optionKey; // The option (A, B, C, D) is the value
-            radioInput.id = `option-${index}-${optionKey}`;  // Unique ID for label association
-
-            const label = document.createElement('label');
-            label.setAttribute('for', `option-${index}-${optionKey}`);
-            label.textContent = `${questionData.options[optionKey]}`;  // Use optionKey from server
-
-            optionItem.appendChild(radioInput);
-            optionItem.appendChild(label);
-            optionsList.appendChild(optionItem);
-        }
-        questionDiv.appendChild(optionsList);
-        quizForm.appendChild(questionDiv);
-    });
-
-    // Add submit button
-    const submitButton = document.createElement('button');
-    submitButton.type = 'submit';
-    submitButton.textContent = 'Submit Quiz';
-    submitButton.id = 'quiz-submit-button'; // Add the ID here
-    quizForm.appendChild(submitButton);
-
-    // Add event listener to process quiz submission
-    quizForm.addEventListener('submit', (event) => {
-        event.preventDefault(); // Prevent default form submission
-        gradeQuiz(quizData); // Grade the quiz
-    });
-}
-async function gradeQuiz(quizData) {
-    const quizContainer = document.getElementById('quiz-container'); // Ensure it exists
-    const quizForm = quizContainer.querySelector('form');
-
-    let score = 0;
-    const questionElements = quizForm.querySelectorAll('.quiz-question');  // Get each question element
-
-    // Disable all quiz inputs
-    const allInputs = quizForm.querySelectorAll('input');
-    allInputs.forEach(input => {
-        input.disabled = true;  // This will prevent selection
-    });
-
-    // Disable submit button
-    const submitButton = quizForm.querySelector('button[type="submit"]');
-    submitButton.disabled = true;
-
-    questionElements.forEach((questionElement, index) => {
-        const selectedOption = questionElement.querySelector(`input[name="question-${index}"]:checked`); // Find selected radio
-
-        if (selectedOption) {
-            const userAnswer = selectedOption.value;
-            const correctAnswer = quizData[index].answer; // Correct answer for that question
-
-            if (userAnswer === correctAnswer) {
-                score++;
-                questionElement.classList.add('correct');
-            } else {
-                questionElement.classList.add('incorrect');
-                const answerParagraph = document.createElement('p');
-                answerParagraph.classList.add('correct-answer');
-                answerParagraph.textContent = `Correct Answer: ${correctAnswer}`;  // Display answer
-                questionElement.appendChild(answerParagraph);
+        } finally {
+            if (currentQuizFetchAbortController === controller) {
+                currentQuizFetchAbortController = null;
             }
-        } else {
-            questionElement.classList.add('unanswered');  // Visual for unanswered questions
         }
-    });
+    }
+    function displayQuiz(quizData) { /* ... unchanged ... */
+        const quizContainer = document.getElementById('quiz-container');
+        if (!quizContainer) return;
+        quizContainer.innerHTML = `<h2>${i18n[userLanguage]?.['quizTitle'] || 'Quiz'}</h2>`;
+        const quizForm = document.createElement('form');
+        quizContainer.appendChild(quizForm);
+        quizData.forEach((questionData, index) => {
+            const questionDiv = document.createElement('div');
+            questionDiv.classList.add('quiz-question');
+            questionDiv.innerHTML = `<p>${questionData.question}</p>`;
+            const optionsList = document.createElement('ul');
+            optionsList.classList.add('quiz-options');
+            for (const optionKey in questionData.options) {
+                const optionItem = document.createElement('li');
+                optionItem.classList.add('quiz-option');
+                const radioInput = document.createElement('input');
+                radioInput.type = 'radio'; radioInput.name = `question-${index}`;
+                radioInput.value = optionKey; radioInput.id = `option-${index}-${optionKey}`;
+                const label = document.createElement('label');
+                label.setAttribute('for', `option-${index}-${optionKey}`);
+                label.textContent = `${questionData.options[optionKey]}`;
+                optionItem.appendChild(radioInput); optionItem.appendChild(label);
+                optionsList.appendChild(optionItem);
+            }
+            questionDiv.appendChild(optionsList);
+            quizForm.appendChild(questionDiv);
+        });
+        const submitButton = document.createElement('button');
+        submitButton.type = 'submit';
+        submitButton.textContent = i18n[userLanguage]?.['submitQuiz'] || 'Submit Quiz';
+        submitButton.id = 'quiz-submit-button';
+        quizForm.appendChild(submitButton);
+        quizForm.addEventListener('submit', (event) => {
+            event.preventDefault();
+            gradeQuiz(quizData);
+        });
+        if (body.classList.contains('dark-mode')) {
+            quizContainer.querySelectorAll('h2, .quiz-question p, .quiz-options li, .quiz-option label, #quiz-submit-button')
+                .forEach(el => el.classList.add('dark-mode'));
+        }
+    }
+    async function gradeQuiz(quizData) { /* ... unchanged, but calls updatePointsOnServer ... */
+        const quizContainer = document.getElementById('quiz-container');
+        if (!quizContainer) return;
+        const quizForm = quizContainer.querySelector('form');
+        let score = 0;
+        const questionElements = quizForm.querySelectorAll('.quiz-question');
+        quizForm.querySelectorAll('input').forEach(input => input.disabled = true);
+        quizForm.querySelector('button[type="submit"]').disabled = true;
 
-    const feedbackDiv = document.createElement('div');
-    feedbackDiv.classList.add('quiz-feedback');
-    feedbackDiv.textContent = `You scored ${score} out of ${quizData.length}`; // Display result
-    quizContainer.appendChild(feedbackDiv);
+        questionElements.forEach((questionElement, index) => {
+            const selectedOption = questionElement.querySelector(`input[name="question-${index}"]:checked`);
+            if (selectedOption) {
+                const userAnswer = selectedOption.value;
+                const correctAnswer = quizData[index].answer;
+                if (userAnswer === correctAnswer) {
+                    score++; questionElement.classList.add('correct');
+                } else {
+                    questionElement.classList.add('incorrect');
+                    const answerP = document.createElement('p');
+                    answerP.classList.add('correct-answer');
+                    answerP.textContent = `${i18n[userLanguage]?.['correctAnswer'] || 'Correct Answer'}: ${correctAnswer}`;
+                    questionElement.appendChild(answerP);
+                }
+            } else {
+                questionElement.classList.add('unanswered');
+            }
+        });
+        const feedbackDiv = document.createElement('div');
+        feedbackDiv.classList.add('quiz-feedback');
+        feedbackDiv.textContent = `${i18n[userLanguage]?.['youScored'] || 'You scored'} ${score} / ${quizData.length}`;
+        quizContainer.appendChild(feedbackDiv);
+        if (body.classList.contains('dark-mode')) {
+            feedbackDiv.classList.add('dark-mode');
+            quizContainer.querySelectorAll('.correct-answer').forEach(el => el.classList.add('dark-mode'));
+        }
 
-        // Update the totalPoints here and update firebase after grading.
-    totalPoints = totalPoints + (score * 2); // Score from last test plus new score
-    await updatePointsInFirestore(totalPoints);
+        const newTotalPoints = totalPoints + (score * 2); // Award 2 points per correct answer
+        await updatePointsOnServer(newTotalPoints); // Update server
+        updateProgressDisplay(); // Update UI
+    }
 
-     updateProgressDisplay();
-}            
-                function updateTotalTimeDisplay() {
-                     const percentageElement = totalTimeCard.querySelector('.percentage');
-                     const progressBarInner = totalTimeCard.querySelector('.progress-bar-inner');
-                      const totalHours = Math.floor(totalTimeSpent / (1000 * 60 * 60));
-                     const totalMinutes = Math.floor((totalTimeSpent % (1000 * 60 * 60)) / (1000 * 60));
-                      let progressPercentage = 0;
-             
-                     if(totalHours >= 10){
-                          progressPercentage = 100;                 }
-             
-                          else{
-                             progressPercentage = (totalHours/10) * 100;
-                           }
-                          progressBarInner.style.width = `${progressPercentage}%`;
-     
-                          // Animation Logic
-                         let startValue = 0;
-                         const duration = 1500;
-                         const startTime = performance.now();
-     
-                         function updateCounter(currentTime) {
-                           const elapsedTime = currentTime - startTime;
-                           if (elapsedTime < duration) {
-                             const progress = elapsedTime / duration;
-                             const currentHours = Math.floor(totalHours * progress);
-                             const currentMinutes = Math.floor((totalMinutes) * progress);
-                              percentageElement.textContent = `${currentHours} hours ${currentMinutes} mins`;
-                             requestAnimationFrame(updateCounter);
-                         } else {
-                             percentageElement.textContent = `${totalHours} hours ${totalMinutes} mins`;
-                           }
-                         }
-     
-                         requestAnimationFrame(updateCounter);
-                      }
-                       
-            function updateSubjectTimeDisplay() {
-             
-                subjectTimeCard.innerHTML = '';
-               subjects.forEach(subject => {
-                   const subjectTotalTime = subjectTime[subject.id] || 0; // Get time for this subject or 0 if none
-                    const totalHours = Math.floor(subjectTotalTime / (1000 * 60 * 60));
-                    const totalMinutes = Math.floor((subjectTotalTime % (1000 * 60 * 60)) / (1000 * 60));
-                   
-           
-                   const subjectDiv = document.createElement('div');
-                   subjectDiv.classList.add('subject-time');
-                    subjectDiv.innerHTML = `
-                       <div class="subject-time-header">
-                           <span class="subject-icon">${subject.icon}</span>
-                           <h3 data-i18n="${subject.name}">${i18n[userLanguage][subject.name]}</h3>
-                       </div>
-                       <p class="time-spent">${totalHours} hours ${totalMinutes} mins</p>
-                   `;
-                   subjectTimeCard.appendChild(subjectDiv);
-               });
-           }
-                 
-                       async function calculateTotalTime() {
-                 
-                            const user = firebase.auth().currentUser;
-                            if(user){
-                                  const doc = await db.collection('users').doc(user.email).get();
-                                  if(doc.exists){
-                                     const userData = doc.data();
-                                      if (userData.totaltimespent) {
-                                           totalTimeSpent = userData.totaltimespent;
-                                     }
-                                     // Fetch time per subject from firestore
-                                       subjectTime = userData.subjectTime || {};
-                                       if(userData.totalPoints){
-                                          totalPoints = userData.totalPoints;
-                                       }
-                                   }
-                              }
-                               updateTotalTimeDisplay();
-                               updateSubjectTimeDisplay();
-                      }
-                 
-                 
-                       function startSession() {
-                           if(sessionStartTime)
-                             return;
-                              console.log('starting new session')
-                            sessionStartTime = Date.now();
-                             
-                              setInterval(updateTotalTimeAndFirestore, 60000);
-                               calculateTotalTime();
-                               calculateTotalTime();
-                        }
-                        async function updateTotalTimeAndFirestore() {
-                            if (sessionStartTime) {
-                                const sessionEndTime = Date.now();
-                                const sessionDuration = sessionEndTime - sessionStartTime;
-                                totalTimeSpent += sessionDuration;
-                                sessionStartTime = Date.now();
-                 
-                              const userEmail = firebase.auth().currentUser.email;
-                                  if (userEmail) {
-                                   try{
-                                        await db.collection('users').doc(userEmail).update({
-                                              totaltimespent: totalTimeSpent
-                                         });
-                                         
-                                          // Find the subject id for the currently displayed chapter
-                                        let currentSubjectId = null;
-                                        const lastChapter = localStorage.getItem('lastCompletedChapter');
-                                        if (lastChapter) {
-                                                for(const subject of subjects){
-                                                    if(subject.chapters[userLevel].some(chapter => chapter.name === lastChapter)){
-                                                        currentSubjectId = subject.id;
-                                                        break;
-                                                    }
-                                                }
-                                        }
+
+    // Time tracking
+    function updateTotalTimeDisplay() { /* ... unchanged, uses global totalTimeSpent ... */
+        const percentageElement = totalTimeCard.querySelector('.percentage');
+        const progressBarInner = totalTimeCard.querySelector('.progress-bar-inner');
+        const totalHours = Math.floor(totalTimeSpent / (1000 * 60 * 60));
+        const totalMinutes = Math.floor((totalTimeSpent % (1000 * 60 * 60)) / (1000 * 60));
+        let progressPercentage = Math.min(100, (totalHours / 10) * 100); // Cap at 100%
+        if(progressBarInner) progressBarInner.style.width = `${progressPercentage}%`;
+
+        if (percentageElement) {
+            // Animation (optional, ensure it handles 0 values gracefully)
+            let startValueH = 0, startValueM = 0;
+            const duration = 1500;
+            let animStartTime = performance.now();
+            function updateCounter(currentTime) {
+                const elapsedTime = currentTime - animStartTime;
+                if (elapsedTime < duration) {
+                    const progress = elapsedTime / duration;
+                    const currentHours = Math.floor(totalHours * progress);
+                    const currentMinutes = Math.floor(totalMinutes * progress);
+                    percentageElement.textContent = `${currentHours} ${i18n[userLanguage]?.['hours'] || 'hours'} ${currentMinutes} ${i18n[userLanguage]?.['mins'] || 'mins'}`;
+                    requestAnimationFrame(updateCounter);
+                } else {
+                    percentageElement.textContent = `${totalHours} ${i18n[userLanguage]?.['hours'] || 'hours'} ${totalMinutes} ${i18n[userLanguage]?.['mins'] || 'mins'}`;
+                }
+            }
+            requestAnimationFrame(updateCounter);
+        }
+    }
+    function updateSubjectTimeDisplay() { /* ... unchanged, uses global subjectTime ... */
+        subjectTimeCard.innerHTML = '';
+        subjects.forEach(subject => {
+            const subjectTotalTimeMs = subjectTime[subject.id] || 0;
+            const totalHours = Math.floor(subjectTotalTimeMs / (1000 * 60 * 60));
+            const totalMinutes = Math.floor((subjectTotalTimeMs % (1000 * 60 * 60)) / (1000 * 60));
+            const subjectDiv = document.createElement('div');
+            subjectDiv.classList.add('subject-time');
+            subjectDiv.innerHTML = `
+                <div class="subject-time-header">
+                    <span class="subject-icon">${subject.icon}</span>
+                    <h3 data-i18n="${subject.name}">${i18n[userLanguage]?.[subject.name] || subject.name}</h3>
+                </div>
+                <p class="time-spent">${totalHours} ${i18n[userLanguage]?.['hours'] || 'hours'} ${totalMinutes} ${i18n[userLanguage]?.['mins'] || 'mins'}</p>`;
+            subjectTimeCard.appendChild(subjectDiv);
+        });
+        if (body.classList.contains('dark-mode')) {
+            subjectTimeCard.querySelectorAll('h3, .time-spent').forEach(el => el.classList.add('dark-mode'));
+        }
+    }
+
+    // calculateTotalTime is called initially by main IIFE using global totalTimeSpent
+    function calculateTotalTime() {
+        updateTotalTimeDisplay();
+        updateSubjectTimeDisplay();
+    }
+
+    async function syncTotalTimeWithServer() {
+        if (!currentUserEmail) {
+            console.error("syncTotalTimeWithServer: currentUserEmail is null.  Aborting loop.");
+            return; //  Crucial: Stop looping if no user.
+        }
     
-                                          await updateSubjectTimeInFirestore(sessionDuration, currentSubjectId);
+        const currentTime = new Date();
+        console.log(`syncTotalTimeWithServer: Running at ${currentTime.toLocaleTimeString()}`);
     
-                                     }
-                                      catch(error){
-                                          console.error("Error updating total time:", error);
-                                     }
-                                  }
-                               updateTotalTimeDisplay()
-                              }
-                          }
-                          
+        try {
+            // Your existing code for calculating and sending the time
+            const sessionEndTime = Date.now();
+            const sessionDuration = sessionEndTime - sessionStartTime;
+            totalTimeSpent += sessionDuration;
+    
+            const response = await fetch(`${API_BASE_URL}/updateTotalTime`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: currentUserEmail, totalTimeSpent: totalTimeSpent })
+            });
+    
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error("syncTotalTimeWithServer: Error updating server. Status:", response.status, "Text:", errorText);
+            } else {
+                console.log("syncTotalTimeWithServer: Total time synced with server.");
+            }
+            updateTotalTimeDisplay();
+            calculateTotalTime(); // Update UI
+    
+        } catch (error) {
+            console.error("syncTotalTimeWithServer: Error in time synchronization:", error);
+        } finally {
+            sessionStartTime = Date.now(); // Reset session start time
+            console.log("syncTotalTimeWithServer: sessionStartTime Reset at:", sessionStartTime);
+        }
+    
+        // Schedule the next execution using setTimeout
+        setTimeout(async () => {
+            await syncTotalTimeWithServer();  // Recursive call
+        }, 60000); // 60 seconds (1 minute)
+    }
     let chapterStartTime = null;
-    
-      async function updateSubjectTimeInFirestore(sessionDuration, currentSubjectId) {
-                            const user = firebase.auth().currentUser;
-                            if (user && currentSubjectId) {
-                                try {
-                                     const doc = await db.collection('users').doc(user.email).get();
-                                    if (doc.exists) {
-                                       const userData = doc.data();
-                                       let subjectTimes = userData.subjectTime || {};
-                                        subjectTimes[currentSubjectId] = (subjectTimes[currentSubjectId] || 0) + sessionDuration;
-                                        await db.collection('users').doc(user.email).update({
-                                            subjectTime: subjectTimes
-                                        });
-                                          subjectTime = subjectTimes;
-                                       updateSubjectTimeDisplay();
-                                    }
-                                } catch (error) {
-                                    console.error("Error updating subject time:", error);
-                                }
-    
-                            }
-                       
-                      }
-       async function updateTotalTimeAndFirestore() {
-                            if (sessionStartTime) {
-                                const sessionEndTime = Date.now();
-                                const sessionDuration = sessionEndTime - sessionStartTime;
-                                totalTimeSpent += sessionDuration;
-                                sessionStartTime = Date.now();
-                 
-                              const userEmail = firebase.auth().currentUser.email;
-                                  if (userEmail) {
-                                   try{
-                                        await db.collection('users').doc(userEmail).update({
-                                              totaltimespent: totalTimeSpent
-                                         });
-    
-                                     }
-                                      catch(error){
-                                          console.error("Error updating total time:", error);
-                                     }
-                                  }
-                               updateTotalTimeDisplay()
-                              }
-                          }
-    
-    
-     function startSession() {
-                           if(sessionStartTime)
-                             return;
-                              console.log('starting new session')
-                            sessionStartTime = Date.now();
-                             
-                              setInterval(updateTotalTimeAndFirestore, 60000);
-                              calculateTotalTime();
-                               calculateTotalTime();
-                        }
-    
+    async function syncSubjectTimeWithServer(duration, subjectId) {
+        if (!currentUserEmail || !subjectId || duration <=0) return;
+        try {
+            const response = await fetch(`${API_BASE_URL}/updateSubjectTime`, { // NEW SERVER ENDPOINT
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: currentUserEmail, subjectId: subjectId, duration: duration })
+            });
+            if (!response.ok) throw new Error("Failed to update subject time on server");
+
+            // Update client-side subjectTime
+            subjectTime[subjectId] = (subjectTime[subjectId] || 0) + duration;
+            userData.subjectTime = subjectTime; // Keep global userData in sync
+            console.log("Subject time synced for", subjectId);
+            updateSubjectTimeDisplay(); // Update UI
+
+        } catch (error) {
+            console.error("Error syncing subject time with server:", error);
+        }
+    }
+
+    function startSession() {
+        if (sessionStartTime) return;
+        console.log('Starting new session');
+        sessionStartTime = Date.now();
+        setInterval(syncTotalTimeWithServer, 60000); // Sync total time every minute
+    }
+
     function startChapterTimer(subjectId) {
-          if (!subjectId || chapterIntervalId) {
-            return;
-          }
-        endChapterTimer(currentChapterSubjectId)
-      
+        if (!subjectId || chapterIntervalId) return;
+        endChapterTimer(currentChapterSubjectId); // End previous if any
+
         console.log("Starting chapter timer for subject:", subjectId);
         currentChapterSubjectId = subjectId;
         chapterStartTime = Date.now();
-    
-        // Save to localStorage for potential resume  -- REMOVE
-        // localStorage.setItem("chapterStartTime", chapterStartTime); -- REMOVE
-        // localStorage.setItem("currentChapterSubject", subjectId);  -- REMOVE
-      
-        // Update immediately and every 60 seconds
+
         chapterIntervalId = setInterval(() => {
-            if(chapterContentContainer.style.display === 'block')
-               updateChapterTimeAndFirestore();
-         }, 60000);
-      }
-      
-      async function updateChapterTimeAndFirestore() {
-        if (!chapterStartTime || !currentChapterSubjectId) return;
-      
-        const now = Date.now();
-        const duration = now - chapterStartTime;
-        chapterStartTime = now;
-      
-          try {
-              await updateSubjectTimeInFirestore(duration, currentChapterSubjectId);
-               console.log("Updated chapter time:", duration, "ms for", currentChapterSubjectId);
-          } catch (error) {
-             console.error("Error updating chapter time:", error);
-         }
-     }
-    
-    function endChapterTimer(subjectId) {
-       if (!chapterStartTime || !subjectId) return;
-       // Calculate final duration
-        const finalDuration = Date.now() - chapterStartTime;
-        
-           // Clear interval first
-           if (chapterIntervalId) {
-               clearInterval(chapterIntervalId);
-               chapterIntervalId = null;
-           }
-       
-            // Update Firestore with remaining time
-        updateSubjectTimeInFirestore(finalDuration, subjectId)
-             .then(() => {
-                 console.log("Final chapter time recorded:", finalDuration);
-             })
-             .catch((error) => {
-                 console.error("Error recording final chapter time:", error);
-             });
-        
-           // Reset tracking variables
-        chapterStartTime = null;
-        currentChapterSubjectId = null;
-        // localStorage.removeItem('chapterStartTime'); -- REMOVE
-        // localStorage.removeItem('currentChapterSubject'); -- REMOVE
-     }   // Add this initialization code at the end of DOMContentLoaded
-     // Resume chapter timer if page was refreshed  -- MODIFIED SECTION - REMOVED
-    //  const savedStartTime = localStorage.getItem('chapterStartTime');  -- REMOVE THIS LINE
-    //  const savedSubjectId = localStorage.getItem('currentChapterSubject'); -- REMOVE THIS LINE
-    //  if (savedStartTime && savedSubjectId) { -- REMOVE THIS LINE
-    //      chapterStartTime = parseInt(savedStartTime); -- REMOVE THIS LINE
-    //      currentChapterSubjectId = savedSubjectId;  -- REMOVE THIS LINE
-    //      startChapterTimer(savedSubjectId); -- REMOVE THIS LINE
-    //  } -- REMOVE THIS LINE
-    
-     // --- Inside displayChapterView --- ADDED/MODIFIED LINES
-
-    
-    
-     // --- Inside navigateToSubjects --- ADDED/MODIFIED LINES
- // --- Inside navigateToSubjects --- ADDED/MODIFIED LINES
- function navigateToSubjects() {
-    cancelCurrentChapterFetch(); // Cancel pending chapter fetch when navigating back
-    cancelCurrentAudioFetch(); // Cancel pending audio fetch when navigating back
-    cancelCurrentQuizFetch(); // Cancel pending quiz fetch when navigating back // <<< ADDED
-    removeAndResetConvertToAudioButton(); // Clear audio state
-
-
-    studyMenu.style.display = 'block';
-    chaptersContainer.style.display = 'none';
-    chapterContentContainer.style.display = 'none';
-    backButtonContainer.style.display = 'none';
-     contentText.innerHTML = '';
-      // Clear content text before navigating back to subjects
-       contentText.innerHTML = '';
-
-       // End subject timer
-      if (currentChapterSubjectId) {
-        endChapterTimer(currentChapterSubjectId); // Pass the current subject ID
-      }
-
-     // Scroll to the top when navigating back
-     window.scrollTo({ top: 0, behavior: 'smooth' });
-
-     if (studyMenu) {
-        const firstItem = studyMenu.querySelector('.study-menu-item');
-        if (firstItem) firstItem.focus();
-     }
-
-}
-function navigateToChapters() {
-    cancelCurrentChapterFetch(); // Cancel pending chapter fetch when navigating back
-    cancelCurrentAudioFetch(); // Cancel pending audio fetch when navigating back
-    cancelCurrentQuizFetch(); // Cancel pending quiz fetch when navigating back // <<< ADDED
-    removeAndResetConvertToAudioButton(); // Clear audio state
-
-
-    studyMenu.style.display = 'none';
-     chaptersContainer.style.display = 'block';
-    chapterContentContainer.style.display = 'none';
-    backButtonContainer.style.display = 'flex';
-    contentText.innerHTML = '';
-
-       // Clear content text before navigating back to chapters
-    contentText.innerHTML = '';
-        // End subject timer
-if (currentChapterSubjectId) {
-    endChapterTimer(currentChapterSubjectId);  // Pass the current subject ID
-}
-
- // Scroll to the top when navigating back
- window.scrollTo({ top: 0, behavior: 'smooth' });
-
-   document.getElementById('convert-to-audio').style.display = 'none';
-    if (chapterItems && chapterItems.length > 0) {
-        setChapterFocus(); // Assuming setChapterFocus takes index 0 by default if none provided
+            if (chapterContentContainer.style.display === 'block' && chapterStartTime && currentChapterSubjectId) {
+                const now = Date.now();
+                const duration = now - chapterStartTime;
+                chapterStartTime = now; // Reset for next interval
+                if (duration > 0) {
+                    syncSubjectTimeWithServer(duration, currentChapterSubjectId);
+                }
+            }
+        }, 60000); // Sync chapter's subject time every minute
     }
-}                 
-                     function endSession() {
-                         sessionStartTime = null;
-                         console.log('ending session')
-                      }
-                 
-                 
-                 
-                      function handleBackButtonClick(event) {
-                          if (chapterContentContainer.style.display === 'block') {
-                              navigateToChapters();
-                          } else if (chaptersContainer.style.display === 'block') {
-                              navigateToSubjects();
-                          }
-                      
-                          // Scroll to the top smoothly
-                          window.scrollTo({
-                              top: 0,
-                              behavior: "smooth"
-                          });
-                      }
-                      
-                 
-                     backButton.addEventListener('click', handleBackButtonClick);
-                 
-                   function renderSubjects() {
-                          studyMenu.innerHTML = '';
-                          subjects.forEach((subject) => {
-                              const listItem = document.createElement('li');
-                               listItem.classList.add('study-menu-item');
-                              listItem.setAttribute('tabindex', '0');
-                              listItem.innerHTML = `
-                                  <div class="study-menu-item-image">
-                                       ${subject.icon}
-                                   </div>
-                                   <div class="study-menu-item-content">
-                                       <h3 data-i18n="${subject.name}">${i18n[userLanguage][subject.name]}</h3>
-                                   </div>
-                             `;
-                              listItem.addEventListener('click', () => {
-                                  window.scrollTo({ top: 0, behavior: 'smooth' });
-                                  displayChapters(subject);
-                              });
-                              studyMenu.appendChild(listItem);
-                          });
-                          if (studyMenu && studyMenu.children.length > 0) {
-                              const firstItem = studyMenu.querySelector('.study-menu-item');
-                             if (firstItem)
-                                 firstItem.focus()
-                          }
-                      }
-                 
-                     studyMenu.addEventListener('wheel', (e) => {
-                 
-                      });
-                 
-                 
-                      renderSubjects();
-                 
-                 
-                      function translatePage() {
-                          const elements = document.querySelectorAll('[data-i18n]');
-                          elements.forEach(element => {
-                              const key = element.getAttribute('data-i18n');
-                              if (i18n[userLanguage] && i18n[userLanguage][key]) {                              element.textContent = i18n[userLanguage][key];
-                              } else {
-                                 
-                              }
-                          });
-                      }
-                 
 
-                 
-                 
-                 
-                        // Call fetchAndDisplayUserName after data from firebase is loaded
-                        (async function () {
-                            await fetchAndDisplayUserName()
-                             await fetchDarkModePreference();
-                              calculateTotalTime()
-                        })();
-                       startSession();
-                        // Clean Up Session on Exit
-                         window.addEventListener('beforeunload', endSession);
-                         window.addEventListener('unload', endSession);
-                         logoutButton.addEventListener('click', async () => {
-                             try {
-                                 await firebase.auth().signOut();
-                                 window.location.href = 'index.html'; // Redirect to login page
-                             } catch (error) {
-                                 console.error("Error logging out:", error);
-                             }
-                         });
-                              
-                              
-                              function markChapterAsCompleted(chapterName, subjectName) {
-                                 // Add level to chapter name for unique tracking
-                                 const chapterKey = `${userLevel}/${chapterName}`;
+    function endChapterTimer(subjectIdToEnd) {
+        if (chapterIntervalId) {
+            clearInterval(chapterIntervalId);
+            chapterIntervalId = null;
+        }
+        if (chapterStartTime && subjectIdToEnd) {
+            const finalDuration = Date.now() - chapterStartTime;
+            if (finalDuration > 0) {
+                syncSubjectTimeWithServer(finalDuration, subjectIdToEnd);
+            }
+        }
+        chapterStartTime = null;
+        // currentChapterSubjectId is reset when a new chapter starts or navigating away
+    }
 
-                             }
-                             async function updateUserLevel() {
-                                const user = firebase.auth().currentUser;
-                                if (user) {
-                                    let newLevel;
-                                    switch (userLevel) {
-                                        case 'beginner':
-                                            newLevel = 'intermediate';
-                                            break;
-                                        case 'intermediate':
-                                            newLevel = 'advanced';
-                                            break;
-                                        default:
-                                            return; // No update for 'advanced' or any other level
-                                    }
-                                    try {
-                                        await db.collection('users').doc(user.email).update({
-                                            testCategory: newLevel, // Corrected field to testCategory
-                                        });
-                                        userLevel = newLevel; // Update client-side
-                                         document.getElementById('user-level-text').textContent = `Level: ${newLevel.charAt(0).toUpperCase() + newLevel.slice(1)}`;
-                                        localStorage.setItem('userLevel', newLevel); //Store in local storage as well
-                                             // Update the level on the user level display
-                                             const levelText = document.getElementById('user-level-text');
-                                             if (levelText) {
-                                                const level = localStorage.getItem('userLevel')
-                                                if (level)
-                                                   levelText.textContent = i18n[userLanguage]['level'] +`: ${level.charAt(0).toUpperCase() + level.slice(1)}`;
-                                              }
-    
-                                             log("User level updated to: " + newLevel);
-                            
-                                    } catch (error) {
-                                        console.error("Error updating user level in Firestore:", error);
-                                    }
-                                }
-                            }    
-    
-                            const friendSection = document.getElementById('friend');
-                            const friendChat = friendSection.querySelector('#friend-chat');
-                            const friendInput = friendSection.querySelector('#friend-input');
-                            const friendSend = friendSection.querySelector('#friend-send');
-                            
-                            const counsellorSection = document.getElementById('counsellor');
-                            const counsellorChat = counsellorSection.querySelector('#counsellor-chat');
-                            const counsellorInput = counsellorSection.querySelector('#counsellor-input');
-                            const counsellorSend = counsellorSection.querySelector('#counsellor-send');
-                            
-                            async function sendMessageToAI(message, chatArea, type) {
-                              if (!message) return;
-                              const user = firebase.auth().currentUser;
-                          
-                              let userEmail = "unknown@example.com";
-                              let mentalDisorder = "No Mental Disorder";
-                              let userLevel = "beginner";
-                          
-                              if (user) {
-                                  userEmail = user.email;
-                          
-                                  try {
-                                      const doc = await db.collection('users').doc(user.email).get();
-                                      if (doc.exists) {
-                                          const userData = doc.data();
-                                          mentalDisorder = userData.mentalDisorder || "No Mental Disorder";
-                                          userLevel = userData.testCategory || "beginner";
-                                      }
-                                  } catch (error) {
-                                      console.error("Error fetching user data for chat:", error);
-                                  }
-                              }
-                          
-                              const userMessageDiv = document.createElement('div');
-                              userMessageDiv.classList.add('chat-message', 'user-message');
-                          
-                              // Apply dark mode class based on body's class
-                              if (document.body.classList.contains('dark-mode')) {
-                                  userMessageDiv.classList.add('dark-mode');
-                              }
-                             userMessageDiv.textContent = message;
-                              chatArea.appendChild(userMessageDiv);
-                              chatArea.scrollTop = chatArea.scrollHeight;  //Scroll to the bottom directly after adding
-                          
-                              try {
-                                  const response = await fetch("https://friend-api-213051243033.asia-south2.run.app/chat", {
-                                      method: "POST",
-                                      headers: {
-                                          "Content-Type": "application/json"
-                                      },
-                                      body: JSON.stringify({
-                                          email: userEmail,
-                                          message: message,
-                                          user_type: type,
-                                          mentalDisorder: mentalDisorder,  // Send mentalDisorder
-                                          userLevel: userLevel        // Send userLevel
-                                      })
-                          
-                                  });
-                          
-                                  const data = await response.json();
-                                  if (!response.ok) {
-                                      throw new Error(data.error || "Failed to fetch AI response");
-                                  }
-                          
-                                  let formattedResponse = data.response;
-                          
-                                  // Format headings
-                                  formattedResponse = formattedResponse.replace(/### (.*)/g, '<br> $1');
-                          
-                                  // Format bold text
-                                  formattedResponse = formattedResponse.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
-                          
-                                  //Replace newline character
-                                  formattedResponse = formattedResponse.replace(/\n/g, '<br>');
-                          
-                                  const aiMessageDiv = document.createElement('div');
-                                  aiMessageDiv.classList.add('chat-message', 'ai-message');
-                                  if (document.body.classList.contains('dark-mode')) {
-                                       aiMessageDiv.classList.add('dark-mode');
-                                   }
-                          
-                                  aiMessageDiv.innerHTML = formattedResponse;
-                                  chatArea.appendChild(aiMessageDiv);
-                                  chatArea.scrollTop = chatArea.scrollHeight;  //Scroll to the bottom directly after adding
-                          
-                                  totalPoints = totalPoints + 1;
-                                  updatePointsInFirestore(totalPoints);
-                                  updateProgressDisplay()
-                              } catch (error) {
-                                  console.error("Failed to send AI Response:", error);
-                                  const aiMessageDiv = document.createElement('div');
-                                  aiMessageDiv.classList.add('chat-message', 'ai-message');
-                                  aiMessageDiv.textContent = 'Failed to fetch response.';
-                                  chatArea.appendChild(aiMessageDiv);
-                                   chatArea.scrollTop = chatArea.scrollHeight;  //Scroll to the bottom directly after adding
-                              } finally {
-                                  chatArea.scrollTop = chatArea.scrollHeight;
-                              }
-                          }
-                            
-                            friendSend.addEventListener('click', (e) => {
-                              e.preventDefault();
-                              const message = friendInput.value.trim();
-                              if (message) {
-                                  sendMessageToAI(message, friendChat, 'friend');
-                                  friendInput.value = '';
-                                  friendChat.scrollTop = friendChat.scrollHeight; // Scroll friendChat after sending
-                              }
-                          });
-                          
-                          counsellorSend.addEventListener('click', (e) => {
-                              e.preventDefault();
-                              const message = counsellorInput.value.trim();
-                              if (message) {
-                                  sendMessageToAI(message, counsellorChat, 'counsellor');
-                                  counsellorInput.value = '';
-                                  counsellorChat.scrollTop = counsellorChat.scrollHeight; // Scroll counsellorChat after sending
-                              }
-                          });
-                          
-                          friendInput.addEventListener('keydown', (e) => {
-                              if (e.key === 'Enter') {
-                                  e.preventDefault();
-                                  const message = friendInput.value.trim();
-                                  if (message) {
-                                      sendMessageToAI(message, friendChat, 'friend');
-                                      friendInput.value = '';
-                                      friendChat.scrollTop = friendChat.scrollHeight; // Scroll friendChat after Enter
-                                  }
-                              }
-                          });
-                          
-                          counsellorInput.addEventListener('keydown', (e) => {
-                              if (e.key === 'Enter') {
-                                  e.preventDefault();
-                                  const message = counsellorInput.value.trim();
-                                  if (message) {
-                                      sendMessageToAI(message, counsellorChat, 'counsellor');
-                                      counsellorInput.value = '';
-                                      counsellorChat.scrollTop = counsellorChat.scrollHeight; // Scroll counsellorChat after Enter
-                                  }
-                              }
-                          });
-                                    
-                            
-              
-        const helpSection = document.getElementById('help');
-        const sosButton = document.getElementById('sosButton');
-        const sosOverlay = document.getElementById('sosOverlay');
-        const cancelSosButton = document.getElementById('cancelSosButton');
-            
-            
-           sosButton.addEventListener('click', () => {
-              sosOverlay.style.display = 'block';
-               sosOverlay.innerHTML = `<button id="cancelSosButton">Turn Off SOS</button>`
-                  
-           })
-            sosOverlay.addEventListener('click', (event) => {
-                if (event.target.id === "cancelSosButton" || event.target.id === "sosOverlay") {
-                    sosOverlay.style.display = 'none';
-                     sosOverlay.innerHTML = '';
-    
-                }
-              
+
+    function navigateToSubjects() {
+        cancelCurrentChapterFetch(); cancelCurrentAudioFetch(); cancelCurrentQuizFetch();
+        removeAndResetConvertToAudioButton();
+        studyMenu.style.display = 'block';
+        chaptersContainer.style.display = 'none';
+        chapterContentContainer.style.display = 'none';
+        backButtonContainer.style.display = 'none';
+        contentText.innerHTML = '';
+        if (currentChapterSubjectId) {
+            endChapterTimer(currentChapterSubjectId);
+            currentChapterSubjectId = null; // Clear it as we are leaving chapter context
+        }
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        if (studyMenu) {
+            const firstItem = studyMenu.querySelector('.study-menu-item');
+            if (firstItem) firstItem.focus();
+        }
+    }
+
+    function navigateToChapters() {
+        cancelCurrentChapterFetch(); cancelCurrentAudioFetch(); cancelCurrentQuizFetch();
+        removeAndResetConvertToAudioButton();
+        studyMenu.style.display = 'none';
+        chaptersContainer.style.display = 'block';
+        chapterContentContainer.style.display = 'none';
+        backButtonContainer.style.display = 'flex';
+        contentText.innerHTML = '';
+        if (currentChapterSubjectId) {
+            endChapterTimer(currentChapterSubjectId);
+            // Don't nullify currentChapterSubjectId here, as we are still in "chapters of a subject" view
+            // It will be ended/changed if a new chapter is selected or if navigating back to subjects.
+        }
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        document.getElementById('convert-to-audio').style.display = 'none';
+        if (chapterItems && chapterItems.length > 0) setChapterFocus(0);
+    }
+
+    function endSession() {
+        if (sessionStartTime) { // If a session was active, sync one last time
+            syncTotalTimeWithServer();
+        }
+        if (currentChapterSubjectId) { // If a chapter was active
+            endChapterTimer(currentChapterSubjectId);
+        }
+        sessionStartTime = null;
+        console.log('Ending session');
+    }
+
+    function handleBackButtonClick(event) {
+        if (chapterContentContainer.style.display === 'block') {
+            navigateToChapters();
+        } else if (chaptersContainer.style.display === 'block') {
+            navigateToSubjects();
+        }
+        window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+    backButton.addEventListener('click', handleBackButtonClick);
+
+    function renderSubjects() {
+        studyMenu.innerHTML = '';
+        subjects.forEach((subject) => {
+            const listItem = document.createElement('li');
+            listItem.classList.add('study-menu-item');
+            listItem.setAttribute('tabindex', '0');
+            listItem.innerHTML = `
+                <div class="study-menu-item-image">${subject.icon}</div>
+                <div class="study-menu-item-content">
+                    <h3 data-i18n="${subject.name}">${i18n[userLanguage]?.[subject.name] || subject.name}</h3>
+                </div>`;
+            listItem.addEventListener('click', () => {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+                displayChapters(subject);
             });
-      
-           document.addEventListener('keydown', (event) => {
-              if (event.key === 'Escape' && sosOverlay.style.display === 'block') {
-                    sosOverlay.style.display = 'none';
-                    sosOverlay.innerHTML = '';
-                 }
-              });
-             
-         const enableActionsButton = document.getElementById('enableActions');
-              enableActionsButton.addEventListener('click', () => {
-                enableActionsButton.textContent = i18n[userLanguage]['actionsEnabled'];
-                enableActionsButton.disabled = true;
-           });
-            
-                
-                function setChapterFocus(index) {
-                  if (chapterItems && chapterItems.length > 0) {
-                    chapterItems.forEach(item => item.classList.remove('focused'));
-                    if (typeof index === 'number' && index >= 0 && index < chapterItems.length) {
-                      chapterItems[index].classList.add('focused');
-                      chapterItems[index].focus();
-                        chaptersContainer.scrollTo({
-                           top: chapterItems[index].offsetTop - chaptersContainer.offsetTop,
-                           behavior: 'smooth'
-                       });
-                    } else if (index === 'last') {
-                           const lastItem = chapterItems[chapterItems.length - 1];
-                              lastItem.classList.add('focused');
-                           lastItem.focus()
-                             chaptersContainer.scrollTo({
-                               top: lastItem.offsetTop - chaptersContainer.offsetTop,
-                               behavior: 'smooth'
-                           });
-                      }
-                }
-             }
-                
-            
-             let chapterItems = []
+            studyMenu.appendChild(listItem);
+        });
+        if (body.classList.contains('dark-mode')) {
+            studyMenu.querySelectorAll('.study-menu-item, h3').forEach(el => el.classList.add('dark-mode'));
+        }
+        if (studyMenu && studyMenu.children.length > 0) {
+            const firstItem = studyMenu.querySelector('.study-menu-item');
+            if (firstItem) firstItem.focus();
+        }
+        translatePage();
+    }
+    renderSubjects(); // Initial render
+
+    // translatePage function (assuming i18n object is globally available)
+    function translatePage() {
+        const elements = document.querySelectorAll('[data-i18n]');
+        elements.forEach(element => {
+            const key = element.getAttribute('data-i18n');
+            if (i18n[userLanguage] && i18n[userLanguage][key]) {
+                element.textContent = i18n[userLanguage][key];
+            } else {
+                // console.warn(`Translation key "${key}" not found for language "${userLanguage}"`);
+            }
+        });
+        // Also re-translate dynamic parts if needed
+        const levelText = document.getElementById('user-level-text');
+        if (levelText && userLevel) {
+            levelText.textContent = `${i18n[userLanguage]?.['level'] || 'Level'}: ${userLevel.charAt(0).toUpperCase() + userLevel.slice(1)}`;
+        }
+        const welcomeMsgSpan = welcomeMessage?.querySelector('span[data-i18n="welcomeBack"]');
+        if (welcomeMsgSpan) welcomeMsgSpan.textContent = i18n[userLanguage]?.['welcomeBack'] || 'Welcome back,';
+
+    }
+
+    window.addEventListener('beforeunload', endSession);
+    // window.addEventListener('unload', endSession); // 'unload' is less reliable
+
+    logoutButton.addEventListener('click', async () => {
+        endSession(); // Sync time before logging out
+
+          const currentUrl = new URL(window.location.href);
+          currentUrl.searchParams.delete('email'); //remove email parameter
+          const newUrl = currentUrl.toString();
     
-         });
+          // Replace the current URL in history without reloading the page
+          window.history.replaceState({}, document.title, newUrl);
+    
+          // RELOAD THE SITE *AFTER* URL update
+          window.location.reload();
+    
+          // 2. Navigate back in history
+          window.history.back();
+    
+        
+    
+    });
+
+
+    const friendSection = document.getElementById('friend');
+    const friendChat = friendSection.querySelector('#friend-chat');
+    const friendInput = friendSection.querySelector('#friend-input');
+    const friendSend = friendSection.querySelector('#friend-send');
+    const counsellorSection = document.getElementById('counsellor');
+    const counsellorChat = counsellorSection.querySelector('#counsellor-chat');
+    const counsellorInput = counsellorSection.querySelector('#counsellor-input');
+    const counsellorSend = counsellorSection.querySelector('#counsellor-send');
+
+    async function sendMessageToAI(message, chatArea, type) {
+        if (!message || !currentUserEmail) return;
+
+        const userMessageDiv = document.createElement('div');
+        userMessageDiv.classList.add('chat-message', 'user-message');
+        if (body.classList.contains('dark-mode')) userMessageDiv.classList.add('dark-mode');
+        userMessageDiv.textContent = message;
+        chatArea.appendChild(userMessageDiv);
+        chatArea.scrollTop = chatArea.scrollHeight;
+
+        try {
+            // The external friend-api should ideally fetch mentalDisorder and userLevel
+            // server-side using Firebase Admin SDK if it needs them, based on the provided email.
+            // Or, pass them from the global `userData` object if that API expects them.
+            const response = await fetch("https://friend-api-213051243033.asia-south2.run.app/chat", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    email: currentUserEmail,
+                    message: message,
+                    user_type: type,
+                    mentalDisorder: userData.mentalDisorder, // from global userData
+                    userLevel: userLevel // from global userLevel
+                })
+            });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || "Failed to fetch AI response");
+
+            let formattedResponse = data.response.replace(/### (.*)/g, '<br> $1').replace(/\*\*(.*?)\*\*/g, '<b>$1</b>').replace(/\n/g, '<br>');
+            const aiMessageDiv = document.createElement('div');
+            aiMessageDiv.classList.add('chat-message', 'ai-message');
+            if (body.classList.contains('dark-mode')) aiMessageDiv.classList.add('dark-mode');
+            aiMessageDiv.innerHTML = formattedResponse;
+            chatArea.appendChild(aiMessageDiv);
+            chatArea.scrollTop = chatArea.scrollHeight;
+
+            const newTotalPoints = totalPoints + 1;
+            await updatePointsOnServer(newTotalPoints); // Update points via our server
+            updateProgressDisplay(); // Refresh UI
+
+        } catch (error) {
+            console.error("Failed to send AI Response:", error);
+            const aiMessageDiv = document.createElement('div');
+            aiMessageDiv.classList.add('chat-message', 'ai-message', 'error-message');
+            if (body.classList.contains('dark-mode')) aiMessageDiv.classList.add('dark-mode');
+            aiMessageDiv.textContent = i18n[userLanguage]?.['aiFail'] || 'Failed to fetch response.';
+            chatArea.appendChild(aiMessageDiv);
+            chatArea.scrollTop = chatArea.scrollHeight;
+        }
+    }
+
+    friendSend.addEventListener('click', (e) => { /* ... unchanged ... */
+        e.preventDefault(); const message = friendInput.value.trim();
+        if (message) { sendMessageToAI(message, friendChat, 'friend'); friendInput.value = ''; }
+    });
+    counsellorSend.addEventListener('click', (e) => { /* ... unchanged ... */
+        e.preventDefault(); const message = counsellorInput.value.trim();
+        if (message) { sendMessageToAI(message, counsellorChat, 'counsellor'); counsellorInput.value = ''; }
+    });
+    friendInput.addEventListener('keydown', (e) => { /* ... unchanged ... */
+        if (e.key === 'Enter') { e.preventDefault(); const message = friendInput.value.trim();
+            if (message) { sendMessageToAI(message, friendChat, 'friend'); friendInput.value = ''; }
+        }
+    });
+    counsellorInput.addEventListener('keydown', (e) => { /* ... unchanged ... */
+        if (e.key === 'Enter') { e.preventDefault(); const message = counsellorInput.value.trim();
+            if (message) { sendMessageToAI(message, counsellorChat, 'counsellor'); counsellorInput.value = ''; }
+        }
+    });
+
+    const helpSection = document.getElementById('help');
+    const sosButton = document.getElementById('sosButton');
+    const sosOverlay = document.getElementById('sosOverlay');
+    // const cancelSosButton = document.getElementById('cancelSosButton'); // This is created dynamically
+
+    sosButton.addEventListener('click', () => {
+        sosOverlay.style.display = 'block';
+        sosOverlay.innerHTML = `<button id="cancelSosButton" data-i18n="turnOffSos">${i18n[userLanguage]?.['turnOffSos'] || 'Turn Off SOS'}</button>`;
+        if (body.classList.contains('dark-mode')) {
+            sosOverlay.querySelector('#cancelSosButton')?.classList.add('dark-mode');
+        }
+    });
+    sosOverlay.addEventListener('click', (event) => {
+        if (event.target.id === "cancelSosButton" || event.target.id === "sosOverlay") {
+            sosOverlay.style.display = 'none'; sosOverlay.innerHTML = '';
+        }
+    });
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && sosOverlay.style.display === 'block') {
+            sosOverlay.style.display = 'none'; sosOverlay.innerHTML = '';
+        }
+    });
+
+    const enableActionsButton = document.getElementById('enableActions');
+    enableActionsButton.addEventListener('click', () => {
+        enableActionsButton.textContent = i18n[userLanguage]?.['actionsEnabled'] || 'Actions Enabled';
+        enableActionsButton.disabled = true;
+    });
+
+    function setChapterFocus(index) { /* ... unchanged ... */
+        if (chapterItems && chapterItems.length > 0) {
+            chapterItems.forEach(item => item.classList.remove('focused'));
+            let itemToFocus;
+            if (typeof index === 'number' && index >= 0 && index < chapterItems.length) {
+                itemToFocus = chapterItems[index];
+            } else if (index === 'last') {
+                itemToFocus = chapterItems[chapterItems.length - 1];
+            }
+            if (itemToFocus) {
+                itemToFocus.classList.add('focused'); itemToFocus.focus();
+                chaptersContainer.scrollTo({ top: itemToFocus.offsetTop - chaptersContainer.offsetTop, behavior: 'smooth' });
+            }
+        }
+    }
+    let chapterItems = []; // Initialized when chapters are displayed
+});
