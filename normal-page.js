@@ -1,4 +1,4 @@
-const API_BASE_URL = 'https://impact-ed-server-213051243033.asia-south2.run.app'; 
+const API_BASE_URL = window.env.API_BASE_URL; 
 function getParameterByName(name, url = window.location.href) {
     name = name.replace(/[\[\]]/g, '\\$&');
     var regex = new RegExp('[?&]' + name + '(=([^&#]*)|&|#|$)'),
