@@ -1,6 +1,6 @@
 // script.js (Modified to use backend API)
 
-const API_BASE_URL = 'https://login-server-213051243033.asia-south2.run.app'; // Replace with your deployed backend URL in production
+const API_BASE_URL = 'https://-----'; // Replace with your deployed backend URL in production
 
 // Function to scroll to the top and open signup modal
 function scrollToSectionAndOpenSignupModal() {
