@@ -1,7 +1,4 @@
-// normal-page.js
-
-// !!! IMPORTANT: Replace this with your actual API base URL !!!
-const API_BASE_URL = 'https://impact-ed-server-213051243033.asia-south2.run.app'; // REPLACE THIS. Example: 'https://us-central1-your-project-id.cloudfunctions.net/api'
+const API_BASE_URL = 'https://impact-ed-server-213051243033.asia-south2.run.app'; 
 function getParameterByName(name, url = window.location.href) {
     name = name.replace(/[\[\]]/g, '\\$&');
     var regex = new RegExp('[?&]' + name + '(=([^&#]*)|&|#|$)'),
