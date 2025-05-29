@@ -1,5 +1,5 @@
 // !!! IMPORTANT: Replace this with your actual API base URL !!!
-const API_BASE_URL = 'https://impact-ed-server-213051243033.asia-south2.run.app'; 
+const API_BASE_URL = 'https://------'; 
 function getParameterByName(name, url = window.location.href) {
     name = name.replace(/[\[\]]/g, '\\$&');
     var regex = new RegExp('[?&]' + name + '(=([^&#]*)|&|#|$)'),
@@ -557,7 +557,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             // 1. Send to external evaluation API
-            const evalResponse = await fetch('https://test-eval-api-213051243033.asia-south2.run.app/evaluate-test', {
+            const evalResponse = await fetch('https://-----/evaluate-test', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({ ...formAnswers, userId: currentUserEmail }) 
@@ -1272,7 +1272,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // userLanguage and userData.mentalDisorder are now global from fetchInitialUserData
             const topicData = `${userLevel}:${chapterName}: ${chapterContent}`;
 
-            const response = await fetch('https://study-gen-api-213051243033.asia-south2.run.app/generate-chapter', {
+            const response = await fetch('https://-----/generate-chapter', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -1462,7 +1462,7 @@ document.addEventListener('DOMContentLoaded', () => {
         translatePage();
 
         try {
-            const response = await fetch('https://quiz-api-213051243033.asia-south2.run.app/generate-quiz', {
+            const response = await fetch('https://------/generate-quiz', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ chapterText: chapterTextContent }),
@@ -1902,7 +1902,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // The external friend-api should ideally fetch mentalDisorder and userLevel
             // server-side using Firebase Admin SDK if it needs them, based on the provided email.
             // Or, pass them from the global `userData` object if that API expects them.
-            const response = await fetch("https://friend-api-213051243033.asia-south2.run.app/chat", {
+            const response = await fetch("https://------/chat", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
